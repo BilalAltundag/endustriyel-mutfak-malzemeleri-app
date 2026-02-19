@@ -2,387 +2,12 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Sparkles, Upload, X, Loader2, AlertCircle, CheckCircle2, Mic, MicOff, Camera } from 'lucide-react'
+import { ArrowLeft, Sparkles, Upload, X, Loader2, AlertCircle, CheckCircle2, Mic, MicOff, Camera, Info, ChevronDown, ChevronUp } from 'lucide-react'
 import Link from 'next/link'
 import { productsApi, categoriesApi, aiApi } from '@/lib/api'
+import { CATEGORY_TEMPLATES, getFieldsForType } from '@/lib/categoryTemplates'
 import Button from '@/components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
-
-// ============================================================
-// Kategori bazlı teknik özellik alanları
-// Her kategorideki tüm ürün çeşitleri aynı teknik alanları paylaşır
-// ============================================================
-
-interface SpecField {
-  name: string
-  label: string
-  type: 'text' | 'number' | 'select'
-  options?: string[]
-  unit?: string
-  placeholder?: string
-}
-
-interface ProductType {
-  value: string
-  label: string
-}
-
-interface CategoryTemplate {
-  types: ProductType[]
-  fields: SpecField[]
-}
-
-const CATEGORY_TEMPLATES: Record<string, CategoryTemplate> = {
-  Evyeler: {
-    types: [
-      { value: 'tek_gozlu_evye', label: 'Tek Gözlü Evye' },
-      { value: 'cift_gozlu_evye', label: 'Çift Gözlü Evye' },
-      { value: 'uc_gozlu_evye', label: 'Üç Gözlü Evye' },
-      { value: 'damlalikli_evye', label: 'Damlalıklı Evye' },
-      { value: 'kose_evye', label: 'Köşe Evye' },
-    ],
-    fields: [
-      { name: 'length_cm', label: 'Uzunluk', type: 'number', unit: 'cm', placeholder: 'örn: 120' },
-      { name: 'width_cm', label: 'Genişlik', type: 'number', unit: 'cm', placeholder: 'örn: 60' },
-      { name: 'height_cm', label: 'Yükseklik', type: 'number', unit: 'cm', placeholder: 'örn: 85' },
-      { name: 'depth_cm', label: 'Göz Derinliği', type: 'number', unit: 'cm', placeholder: 'örn: 30' },
-      { name: 'basin_count', label: 'Göz Sayısı', type: 'select', options: ['1', '2', '3'] },
-      { name: 'has_drainboard', label: 'Damlalık', type: 'select', options: ['Var', 'Yok'] },
-      { name: 'thickness_mm', label: 'Sac Kalınlığı', type: 'number', unit: 'mm', placeholder: 'örn: 0.8' },
-    ],
-  },
-  Arabalar: {
-    types: [
-      { value: 'pilav_arabasi', label: 'Pilav Arabası' },
-      { value: 'kokorec_arabasi', label: 'Kokoreç Arabası' },
-      { value: 'tantuni_arabasi', label: 'Tantuni Arabası' },
-      { value: 'doner_arabasi', label: 'Döner Arabası' },
-      { value: 'servis_arabasi', label: 'Servis Arabası' },
-      { value: 'tasima_arabasi', label: 'Taşıma Arabası' },
-    ],
-    fields: [
-      { name: 'length_cm', label: 'Uzunluk', type: 'number', unit: 'cm', placeholder: 'örn: 150' },
-      { name: 'width_cm', label: 'Genişlik', type: 'number', unit: 'cm', placeholder: 'örn: 70' },
-      { name: 'height_cm', label: 'Yükseklik', type: 'number', unit: 'cm', placeholder: 'örn: 90' },
-      { name: 'energy_type', label: 'Isıtma Tipi', type: 'select', options: ['Tüplü', 'Doğalgaz', 'Elektrikli', 'Yok'] },
-      { name: 'has_glass', label: 'Cam', type: 'select', options: ['Var', 'Yok'] },
-      { name: 'wheel_count', label: 'Teker Sayısı', type: 'select', options: ['2', '4'] },
-    ],
-  },
-  Fırınlar: {
-    types: [
-      { value: 'konveksiyonlu_firin', label: 'Konveksiyonlu Fırın' },
-      { value: 'pastane_firini', label: 'Pastane Fırını' },
-      { value: 'pizza_firini', label: 'Pizza Fırını' },
-      { value: 'doner_firini', label: 'Döner Fırını' },
-      { value: 'tunnel_firin', label: 'Tünel Fırın' },
-      { value: 'rotary_firin', label: 'Rotary Fırın' },
-    ],
-    fields: [
-      { name: 'energy_type', label: 'Enerji Tipi', type: 'select', options: ['Gazlı', 'Elektrikli'] },
-      { name: 'tray_count', label: 'Tepsi Sayısı', type: 'number', placeholder: 'örn: 10' },
-      { name: 'tray_size', label: 'Tepsi Ölçüsü', type: 'text', placeholder: 'örn: 40x60, 60x80' },
-      { name: 'length_cm', label: 'Uzunluk', type: 'number', unit: 'cm', placeholder: 'örn: 90' },
-      { name: 'width_cm', label: 'Genişlik', type: 'number', unit: 'cm', placeholder: 'örn: 80' },
-      { name: 'height_cm', label: 'Yükseklik', type: 'number', unit: 'cm', placeholder: 'örn: 170' },
-    ],
-  },
-  Ocaklar: {
-    types: [
-      { value: 'gazli_ocak', label: 'Gazlı Ocak' },
-      { value: 'elektrikli_ocak', label: 'Elektrikli Ocak' },
-      { value: 'induksiyonlu_ocak', label: 'İndüksiyonlu Ocak' },
-      { value: 'wok_ocagi', label: 'Wok Ocağı' },
-      { value: 'pasta_ocagi', label: 'Pasta Ocağı' },
-      { value: 'krep_ocagi', label: 'Krep Ocağı' },
-    ],
-    fields: [
-      { name: 'burner_count', label: 'Göz Sayısı', type: 'select', options: ['1', '2', '3', '4', '5', '6'] },
-      { name: 'energy_type', label: 'Enerji Tipi', type: 'select', options: ['Gazlı', 'Elektrikli', 'İndüksiyon'] },
-      { name: 'length_cm', label: 'Uzunluk', type: 'number', unit: 'cm', placeholder: 'örn: 80' },
-      { name: 'width_cm', label: 'Genişlik', type: 'number', unit: 'cm', placeholder: 'örn: 70' },
-      { name: 'height_cm', label: 'Yükseklik', type: 'number', unit: 'cm', placeholder: 'örn: 85' },
-    ],
-  },
-  Tezgahlar: {
-    types: [
-      { value: 'paslanmaz_celik_tezgah', label: 'Paslanmaz Çelik Tezgah' },
-      { value: 'granit_tezgah', label: 'Granit Tezgah' },
-      { value: 'mermer_tezgah', label: 'Mermer Tezgah' },
-      { value: 'kesme_tezgahi', label: 'Kesme Tezgahı' },
-      { value: 'hazirlik_tezgahi', label: 'Hazırlık Tezgahı' },
-    ],
-    fields: [
-      { name: 'length_cm', label: 'Uzunluk', type: 'number', unit: 'cm', placeholder: 'örn: 150' },
-      { name: 'width_cm', label: 'Genişlik', type: 'number', unit: 'cm', placeholder: 'örn: 70' },
-      { name: 'height_cm', label: 'Yükseklik', type: 'number', unit: 'cm', placeholder: 'örn: 85' },
-      { name: 'has_bottom_shelf', label: 'Alt Raf', type: 'select', options: ['Var', 'Yok'] },
-      { name: 'has_backsplash', label: 'Arka Sıçrama Kenarı', type: 'select', options: ['Var', 'Yok'] },
-      { name: 'thickness_mm', label: 'Sac Kalınlığı', type: 'number', unit: 'mm', placeholder: 'örn: 1.0' },
-    ],
-  },
-  Buzdolapları: {
-    types: [
-      { value: 'tek_kapili_buzdolabi', label: 'Tek Kapılı Buzdolabı' },
-      { value: 'cift_kapili_buzdolabi', label: 'Çift Kapılı Buzdolabı' },
-      { value: 'dikey_donduruculu_buzdolabi', label: 'Dikey Donduruculu Buzdolabı' },
-      { value: 'soklama_buzdolabi', label: 'Şoklama Buzdolabı' },
-      { value: 'vitrini_buzdolabi', label: 'Vitrini Buzdolabı' },
-    ],
-    fields: [
-      { name: 'volume_liters', label: 'Hacim', type: 'number', unit: 'litre', placeholder: 'örn: 600' },
-      { name: 'door_count', label: 'Kapı Sayısı', type: 'select', options: ['1', '2', '3', '4'] },
-      { name: 'cooling_type', label: 'Soğutma Tipi', type: 'select', options: ['Statik', 'Fan (No-Frost)'] },
-      { name: 'length_cm', label: 'Uzunluk', type: 'number', unit: 'cm', placeholder: 'örn: 70' },
-      { name: 'width_cm', label: 'Genişlik', type: 'number', unit: 'cm', placeholder: 'örn: 80' },
-      { name: 'height_cm', label: 'Yükseklik', type: 'number', unit: 'cm', placeholder: 'örn: 200' },
-    ],
-  },
-  Dondurucular: {
-    types: [
-      { value: 'dikey_dondurucu', label: 'Dikey Dondurucu' },
-      { value: 'yatay_dondurucu', label: 'Yatay Dondurucu' },
-      { value: 'soklama_dondurucu', label: 'Şoklama Dondurucu' },
-      { value: 'dondurma_dondurucu', label: 'Dondurma Dondurucu' },
-    ],
-    fields: [
-      { name: 'volume_liters', label: 'Hacim', type: 'number', unit: 'litre', placeholder: 'örn: 500' },
-      { name: 'temperature_min', label: 'Min. Sıcaklık', type: 'number', unit: '°C', placeholder: 'örn: -22' },
-      { name: 'length_cm', label: 'Uzunluk', type: 'number', unit: 'cm', placeholder: 'örn: 70' },
-      { name: 'width_cm', label: 'Genişlik', type: 'number', unit: 'cm', placeholder: 'örn: 80' },
-      { name: 'height_cm', label: 'Yükseklik', type: 'number', unit: 'cm', placeholder: 'örn: 200' },
-    ],
-  },
-  Aspiratörler: {
-    types: [
-      { value: 'duvar_tipi_aspirator', label: 'Duvar Tipi Aspiratör' },
-      { value: 'ada_tipi_aspirator', label: 'Ada Tipi Aspiratör' },
-      { value: 'tavan_tipi_aspirator', label: 'Tavan Tipi Aspiratör' },
-      { value: 'kanalli_aspirator', label: 'Kanallı Aspiratör' },
-    ],
-    fields: [
-      { name: 'length_cm', label: 'Uzunluk', type: 'number', unit: 'cm', placeholder: 'örn: 200' },
-      { name: 'width_cm', label: 'Genişlik', type: 'number', unit: 'cm', placeholder: 'örn: 100' },
-      { name: 'height_cm', label: 'Yükseklik', type: 'number', unit: 'cm', placeholder: 'örn: 50' },
-      { name: 'filter_type', label: 'Filtre Tipi', type: 'select', options: ['Labirent', 'Standart', 'Yağ Filtreli'] },
-      { name: 'has_motor', label: 'Motor', type: 'select', options: ['Dahili', 'Harici', 'Yok'] },
-    ],
-  },
-  Kazanlar: {
-    types: [
-      { value: 'buhar_kazani', label: 'Buhar Kazanı' },
-      { value: 'cift_cidarli_kazan', label: 'Çift Cidarlı Kazan' },
-      { value: 'tencere_kazan', label: 'Tencere Kazan' },
-      { value: 'cay_kazani', label: 'Çay Kazanı' },
-      { value: 'corba_kazani', label: 'Çorba Kazanı' },
-    ],
-    fields: [
-      { name: 'capacity_liters', label: 'Kapasite', type: 'number', unit: 'litre', placeholder: 'örn: 100' },
-      { name: 'energy_type', label: 'Enerji Tipi', type: 'select', options: ['Gazlı', 'Elektrikli'] },
-      { name: 'diameter_cm', label: 'Çap', type: 'number', unit: 'cm', placeholder: 'örn: 50' },
-      { name: 'height_cm', label: 'Yükseklik', type: 'number', unit: 'cm', placeholder: 'örn: 80' },
-    ],
-  },
-  'Kesme Makineleri': {
-    types: [
-      { value: 'et_kiyma_makinesi', label: 'Et Kıyma Makinesi' },
-      { value: 'sebze_dograma_makinesi', label: 'Sebze Doğrama Makinesi' },
-      { value: 'ekmek_dilimleme_makinesi', label: 'Ekmek Dilimleme Makinesi' },
-      { value: 'et_dilimleme_makinesi', label: 'Et Dilimleme Makinesi' },
-    ],
-    fields: [
-      { name: 'power_hp', label: 'Motor Gücü', type: 'number', unit: 'HP', placeholder: 'örn: 1.5' },
-      { name: 'blade_diameter_mm', label: 'Bıçak Çapı', type: 'number', unit: 'mm', placeholder: 'örn: 300' },
-      { name: 'capacity_kg_h', label: 'Kapasite', type: 'number', unit: 'kg/saat', placeholder: 'örn: 200' },
-      { name: 'energy_type', label: 'Enerji Tipi', type: 'select', options: ['Elektrikli', 'Manuel'] },
-    ],
-  },
-  Mikserler: {
-    types: [
-      { value: 'planet_mikser', label: 'Planet Mikser' },
-      { value: 'spiral_mikser', label: 'Spiral Mikser' },
-      { value: 'cirpma_makinesi', label: 'Çırpma Makinesi' },
-      { value: 'hamur_yogurma_makinesi', label: 'Hamur Yoğurma Makinesi' },
-    ],
-    fields: [
-      { name: 'capacity_liters', label: 'Kapasite', type: 'number', unit: 'litre', placeholder: 'örn: 20' },
-      { name: 'power_hp', label: 'Motor Gücü', type: 'number', unit: 'HP', placeholder: 'örn: 1' },
-      { name: 'speed_count', label: 'Hız Kademesi', type: 'select', options: ['1', '2', '3', 'Değişken'] },
-    ],
-  },
-  Fritözler: {
-    types: [
-      { value: 'basincli_fritoz', label: 'Basınçlı Fritöz' },
-      { value: 'klasik_fritoz', label: 'Klasik Fritöz' },
-      { value: 'elektrikli_fritoz', label: 'Elektrikli Fritöz' },
-      { value: 'gazli_fritoz', label: 'Gazlı Fritöz' },
-    ],
-    fields: [
-      { name: 'capacity_liters', label: 'Yağ Kapasitesi', type: 'number', unit: 'litre', placeholder: 'örn: 20' },
-      { name: 'energy_type', label: 'Enerji Tipi', type: 'select', options: ['Gazlı', 'Elektrikli'] },
-      { name: 'tank_count', label: 'Hazne Sayısı', type: 'select', options: ['1', '2'] },
-      { name: 'length_cm', label: 'Uzunluk', type: 'number', unit: 'cm', placeholder: 'örn: 40' },
-      { name: 'width_cm', label: 'Genişlik', type: 'number', unit: 'cm', placeholder: 'örn: 60' },
-      { name: 'height_cm', label: 'Yükseklik', type: 'number', unit: 'cm', placeholder: 'örn: 85' },
-    ],
-  },
-  Izgaralar: {
-    types: [
-      { value: 'gazli_izgara', label: 'Gazlı Izgara' },
-      { value: 'elektrikli_izgara', label: 'Elektrikli Izgara' },
-      { value: 'kontakt_izgara', label: 'Kontakt Izgara' },
-      { value: 'tavuk_izgara', label: 'Tavuk Izgara' },
-    ],
-    fields: [
-      { name: 'energy_type', label: 'Enerji Tipi', type: 'select', options: ['Gazlı', 'Elektrikli', 'Kömürlü'] },
-      { name: 'cooking_area', label: 'Pişirme Alanı', type: 'text', placeholder: 'örn: 50x70 cm' },
-      { name: 'length_cm', label: 'Uzunluk', type: 'number', unit: 'cm', placeholder: 'örn: 80' },
-      { name: 'width_cm', label: 'Genişlik', type: 'number', unit: 'cm', placeholder: 'örn: 70' },
-      { name: 'height_cm', label: 'Yükseklik', type: 'number', unit: 'cm', placeholder: 'örn: 85' },
-    ],
-  },
-  'Tost Makineleri': {
-    types: [
-      { value: 'sandvic_tost_makinesi', label: 'Sandviç Tost Makinesi' },
-      { value: 'krep_tost_makinesi', label: 'Krep Tost Makinesi' },
-      { value: 'panini_makinesi', label: 'Panini Makinesi' },
-    ],
-    fields: [
-      { name: 'plate_size', label: 'Plaka Boyutu', type: 'text', placeholder: 'örn: 30x40 cm' },
-      { name: 'plate_type', label: 'Plaka Tipi', type: 'select', options: ['Düz', 'Oluklu', 'Karışık'] },
-      { name: 'energy_type', label: 'Enerji Tipi', type: 'select', options: ['Elektrikli', 'Gazlı'] },
-    ],
-  },
-  'Kahve Makineleri': {
-    types: [
-      { value: 'espresso_makinesi', label: 'Espresso Makinesi' },
-      { value: 'filtre_kahve_makinesi', label: 'Filtre Kahve Makinesi' },
-      { value: 'turk_kahvesi_makinesi', label: 'Türk Kahvesi Makinesi' },
-      { value: 'otomatik_kahve_makinesi', label: 'Otomatik Kahve Makinesi' },
-    ],
-    fields: [
-      { name: 'group_count', label: 'Grup Sayısı', type: 'select', options: ['1', '2', '3', '4'] },
-      { name: 'boiler_capacity', label: 'Kazan Kapasitesi', type: 'number', unit: 'litre', placeholder: 'örn: 10' },
-      { name: 'brand', label: 'Marka', type: 'text', placeholder: 'örn: La Cimbali, Faema' },
-    ],
-  },
-  'Çay Kazanları': {
-    types: [
-      { value: 'elektrikli_cay_kazani', label: 'Elektrikli Çay Kazanı' },
-      { value: 'gazli_cay_kazani', label: 'Gazlı Çay Kazanı' },
-      { value: 'termos_cay_kazani', label: 'Termos Çay Kazanı' },
-    ],
-    fields: [
-      { name: 'capacity_liters', label: 'Kapasite', type: 'number', unit: 'litre', placeholder: 'örn: 40' },
-      { name: 'energy_type', label: 'Enerji Tipi', type: 'select', options: ['Elektrikli', 'Gazlı'] },
-      { name: 'tap_count', label: 'Musluk Sayısı', type: 'select', options: ['1', '2', '3'] },
-    ],
-  },
-  'Bulaşık Makineleri': {
-    types: [
-      { value: 'bulasik_yikama_makinesi', label: 'Bulaşık Yıkama Makinesi' },
-      { value: 'bulasik_kurutma_makinesi', label: 'Bulaşık Kurutma Makinesi' },
-      { value: 'tunel_tipi_bulasik_makinesi', label: 'Tünel Tipi Bulaşık Makinesi' },
-    ],
-    fields: [
-      { name: 'capacity_basket_h', label: 'Kapasite', type: 'number', unit: 'sepet/saat', placeholder: 'örn: 40' },
-      { name: 'wash_type', label: 'Yıkama Tipi', type: 'select', options: ['Giyotin', 'Tünel', 'Tezgah Altı'] },
-      { name: 'length_cm', label: 'Uzunluk', type: 'number', unit: 'cm', placeholder: 'örn: 60' },
-      { name: 'width_cm', label: 'Genişlik', type: 'number', unit: 'cm', placeholder: 'örn: 60' },
-      { name: 'height_cm', label: 'Yükseklik', type: 'number', unit: 'cm', placeholder: 'örn: 140' },
-    ],
-  },
-  'Ekmek Kızartma Makineleri': {
-    types: [
-      { value: 'ekmek_kizartma_makinesi', label: 'Ekmek Kızartma Makinesi' },
-      { value: 'coklu_ekmek_kizartma_makinesi', label: 'Çoklu Ekmek Kızartma Makinesi' },
-    ],
-    fields: [
-      { name: 'slice_capacity', label: 'Dilim Kapasitesi', type: 'number', placeholder: 'örn: 6' },
-      { name: 'conveyor_type', label: 'Tip', type: 'select', options: ['Konveyörlü', 'Klasik', 'Salamander'] },
-    ],
-  },
-  'Döner Makineleri': {
-    types: [
-      { value: 'elektrikli_doner_makinesi', label: 'Elektrikli Döner Makinesi' },
-      { value: 'gazli_doner_makinesi', label: 'Gazlı Döner Makinesi' },
-      { value: 'dikey_doner_makinesi', label: 'Dikey Döner Makinesi' },
-    ],
-    fields: [
-      { name: 'energy_type', label: 'Enerji Tipi', type: 'select', options: ['Gazlı', 'Elektrikli'] },
-      { name: 'capacity_kg', label: 'Et Kapasitesi', type: 'number', unit: 'kg', placeholder: 'örn: 60' },
-      { name: 'burner_count', label: 'Radyan Sayısı', type: 'number', placeholder: 'örn: 4' },
-      { name: 'height_cm', label: 'Yükseklik', type: 'number', unit: 'cm', placeholder: 'örn: 120' },
-    ],
-  },
-  'Pizza Fırınları': {
-    types: [
-      { value: 'tas_firin', label: 'Taş Fırın' },
-      { value: 'elektrikli_pizza_firini', label: 'Elektrikli Pizza Fırını' },
-      { value: 'tunel_pizza_firini', label: 'Tünel Pizza Fırını' },
-    ],
-    fields: [
-      { name: 'energy_type', label: 'Enerji Tipi', type: 'select', options: ['Gazlı', 'Elektrikli', 'Odunlu'] },
-      { name: 'pizza_capacity', label: 'Pizza Kapasitesi', type: 'number', placeholder: 'örn: 4' },
-      { name: 'pizza_diameter_cm', label: 'Max Pizza Çapı', type: 'number', unit: 'cm', placeholder: 'örn: 33' },
-      { name: 'deck_count', label: 'Kat Sayısı', type: 'select', options: ['1', '2', '3'] },
-    ],
-  },
-  'Krep Makineleri': {
-    types: [
-      { value: 'krep_tavasi', label: 'Krep Tavası' },
-      { value: 'elektrikli_krep_makinesi', label: 'Elektrikli Krep Makinesi' },
-      { value: 'gazli_krep_makinesi', label: 'Gazlı Krep Makinesi' },
-    ],
-    fields: [
-      { name: 'plate_diameter_cm', label: 'Plaka Çapı', type: 'number', unit: 'cm', placeholder: 'örn: 40' },
-      { name: 'plate_count', label: 'Plaka Sayısı', type: 'select', options: ['1', '2'] },
-      { name: 'energy_type', label: 'Enerji Tipi', type: 'select', options: ['Elektrikli', 'Gazlı'] },
-    ],
-  },
-  'Waffle Makineleri': {
-    types: [
-      { value: 'elektrikli_waffle_makinesi', label: 'Elektrikli Waffle Makinesi' },
-      { value: 'gazli_waffle_makinesi', label: 'Gazlı Waffle Makinesi' },
-    ],
-    fields: [
-      { name: 'mold_count', label: 'Kalıp Sayısı', type: 'number', placeholder: 'örn: 2' },
-      { name: 'mold_shape', label: 'Kalıp Şekli', type: 'select', options: ['Kare', 'Yuvarlak', 'Kalpli'] },
-      { name: 'energy_type', label: 'Enerji Tipi', type: 'select', options: ['Elektrikli', 'Gazlı'] },
-    ],
-  },
-  Raflar: {
-    types: [
-      { value: 'duz_raf', label: 'Düz Raf' },
-      { value: 'kose_raf', label: 'Köşe Raf' },
-      { value: 'duvar_rafi', label: 'Duvar Rafı' },
-      { value: 'delikli_raf', label: 'Delikli Raf' },
-    ],
-    fields: [
-      { name: 'length_cm', label: 'Uzunluk', type: 'number', unit: 'cm', placeholder: 'örn: 120' },
-      { name: 'width_cm', label: 'Genişlik', type: 'number', unit: 'cm', placeholder: 'örn: 40' },
-      { name: 'height_cm', label: 'Yükseklik', type: 'number', unit: 'cm', placeholder: 'örn: 180' },
-      { name: 'shelf_count', label: 'Raf Sayısı', type: 'select', options: ['2', '3', '4', '5'] },
-      { name: 'load_capacity_kg', label: 'Yük Kapasitesi', type: 'number', unit: 'kg', placeholder: 'örn: 150' },
-    ],
-  },
-  Benmari: {
-    types: [
-      { value: 'elektrikli_benmari', label: 'Elektrikli Benmari' },
-      { value: 'gazli_benmari', label: 'Gazlı Benmari' },
-      { value: 'kuru_benmari', label: 'Kuru Benmari' },
-      { value: 'sulu_benmari', label: 'Sulu Benmari' },
-    ],
-    fields: [
-      { name: 'compartment_count', label: 'Göz Sayısı', type: 'select', options: ['1', '2', '3', '4', '5', '6'] },
-      { name: 'energy_type', label: 'Enerji Tipi', type: 'select', options: ['Elektrikli', 'Gazlı'] },
-      { name: 'heating_type', label: 'Isıtma Tipi', type: 'select', options: ['Kuru', 'Sulu'] },
-      { name: 'length_cm', label: 'Uzunluk', type: 'number', unit: 'cm', placeholder: 'örn: 120' },
-      { name: 'width_cm', label: 'Genişlik', type: 'number', unit: 'cm', placeholder: 'örn: 70' },
-      { name: 'height_cm', label: 'Yükseklik', type: 'number', unit: 'cm', placeholder: 'örn: 85' },
-    ],
-  },
-}
 
 export default function NewProductPage() {
   const router = useRouter()
@@ -414,6 +39,10 @@ export default function NewProductPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
 
+  // ─── Teknik Bilgi Rehberi State ───
+  const [showSpecGuide, setShowSpecGuide] = useState(false)
+  const [expandedGuideCategory, setExpandedGuideCategory] = useState<string | null>(null)
+
   // ─── Ses Kayıt State (MediaRecorder + Whisper) ───
   const [isRecording, setIsRecording] = useState(false)
   const [isTranscribing, setIsTranscribing] = useState(false)
@@ -444,6 +73,9 @@ export default function NewProductPage() {
   }
 
   const template = getTemplateForCategory()
+  const activeFields = template && selectedProductType
+    ? getFieldsForType(template, selectedProductType)
+    : []
 
   // ─── Ses Kayıt Kontrol ───
   const toggleRecording = useCallback(async () => {
@@ -647,12 +279,10 @@ export default function NewProductPage() {
 
       // extra_specs olarak teknik özellikleri JSON kaydet
       const extraSpecs: Record<string, any> = {}
-      if (template) {
-        for (const field of template.fields) {
-          const val = dynamicFields[field.name]
-          if (val !== undefined && val !== '') {
-            extraSpecs[field.name] = field.type === 'number' ? parseFloat(val) : val
-          }
+      for (const field of activeFields) {
+        const val = dynamicFields[field.name]
+        if (val !== undefined && val !== '') {
+          extraSpecs[field.name] = field.type === 'number' ? parseFloat(val) : val
         }
       }
 
@@ -713,10 +343,21 @@ export default function NewProductPage() {
             ══════════════════════════════════════════════════ */}
         <Card className="mb-6 border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-blue-800">
-              <Sparkles className="w-5 h-5" />
-              AI ile Hızlı Doldur
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-blue-800">
+                <Sparkles className="w-5 h-5" />
+                AI ile Hızlı Doldur
+              </CardTitle>
+              <button
+                type="button"
+                onClick={() => setShowSpecGuide(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors"
+                title="Hangi bilgileri söylemeliyim?"
+              >
+                <Info className="w-3.5 h-3.5" />
+                Ne söylemeliyim?
+              </button>
+            </div>
             <p className="text-sm text-blue-600 mt-1">
               Fotoğraf ekleyin ve ürünü kısaca anlatın, AI formu sizin için doldursun.
             </p>
@@ -966,7 +607,7 @@ export default function NewProductPage() {
           </Card>
 
           {/* Teknik Özellikler - sadece ürün çeşidi seçildiyse göster */}
-          {formData.category_id && selectedProductType && template && template.fields.length > 0 && (
+          {activeFields.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -978,7 +619,7 @@ export default function NewProductPage() {
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {template.fields.map((field) => (
+                  {activeFields.map((field) => (
                     <div key={field.name}>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         {field.label}
@@ -1185,6 +826,135 @@ export default function NewProductPage() {
           </div>
         </form>
       </div>
+
+      {/* ══════════════════════════════════════════════════
+          TEKNİK BİLGİ REHBERİ — Bottom Sheet
+          ══════════════════════════════════════════════════ */}
+      {showSpecGuide && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => { setShowSpecGuide(false); setExpandedGuideCategory(null) }}
+          />
+
+          {/* Sheet */}
+          <div className="relative w-full sm:max-w-lg bg-white rounded-t-2xl sm:rounded-2xl max-h-[80vh] flex flex-col animate-slide-up shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">Sesle Ne Söylemeliyim?</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Kategoriye göre istenen bilgiler</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setShowSpecGuide(false); setExpandedGuideCategory(null) }}
+                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Genel bilgi */}
+            <div className="px-5 py-3 bg-amber-50 border-b border-amber-100">
+              <p className="text-xs text-amber-800">
+                <strong>Her ürün için:</strong> boyutlar (en-boy-yükseklik), marka, malzeme, durum (çalışıyor/arızalı) ve fiyat bilgisi söyleyin.
+              </p>
+            </div>
+
+            {/* Kategori Listesi */}
+            <div className="overflow-y-auto flex-1 px-3 py-2">
+              {Object.entries(CATEGORY_TEMPLATES).map(([catName, catTemplate]) => {
+                const isExpanded = expandedGuideCategory === catName
+                const hasTypeSpecificFields = catTemplate.types.some(t => t.fields && t.fields.length > 0)
+
+                return (
+                  <div key={catName} className="border-b border-gray-50 last:border-0">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedGuideCategory(isExpanded ? null : catName)}
+                      className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-gray-50 rounded-lg transition-colors"
+                    >
+                      <span className="text-sm font-medium text-gray-800">{catName}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-gray-400">
+                          {catTemplate.types.length} çeşit
+                        </span>
+                        {isExpanded ? (
+                          <ChevronUp className="w-4 h-4 text-gray-400" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-gray-400" />
+                        )}
+                      </div>
+                    </button>
+
+                    {isExpanded && (
+                      <div className="px-3 pb-3 space-y-3">
+                        {hasTypeSpecificFields ? (
+                          // Ürün çeşidi bazlı gösterim
+                          catTemplate.types.map((pType) => {
+                            const fields = pType.fields && pType.fields.length > 0
+                              ? pType.fields
+                              : catTemplate.fields
+                            return (
+                              <div key={pType.value}>
+                                <p className="text-xs font-semibold text-gray-600 mb-1.5">{pType.label}</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {fields.map((field) => (
+                                    <span
+                                      key={field.name}
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] bg-blue-50 text-blue-700 rounded-md"
+                                    >
+                                      {field.label}
+                                      {field.unit && (
+                                        <span className="text-blue-400">({field.unit})</span>
+                                      )}
+                                      {field.type === 'select' && field.options && (
+                                        <span className="text-blue-400">
+                                          → {field.options.join(' / ')}
+                                        </span>
+                                      )}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )
+                          })
+                        ) : (
+                          // Tüm çeşitler aynı alanları paylaşıyor
+                          <>
+                            <div className="flex flex-wrap gap-1.5">
+                              {catTemplate.fields.map((field) => (
+                                <span
+                                  key={field.name}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] bg-blue-50 text-blue-700 rounded-md"
+                                >
+                                  {field.label}
+                                  {field.unit && (
+                                    <span className="text-blue-400">({field.unit})</span>
+                                  )}
+                                  {field.type === 'select' && field.options && (
+                                    <span className="text-blue-400">
+                                      → {field.options.join(' / ')}
+                                    </span>
+                                  )}
+                                </span>
+                              ))}
+                            </div>
+                            <p className="text-[11px] text-gray-400">
+                              Çeşitler: {catTemplate.types.map(t => t.label).join(', ')}
+                            </p>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

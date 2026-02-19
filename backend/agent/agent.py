@@ -70,6 +70,87 @@ FRONTEND_CATEGORY_FIELDS: dict[str, dict] = {
         "fields": ["compartment_count", "energy_type", "heating_type", "length_cm", "width_cm", "height_cm"],
         "energy_options": ["Elektrikli", "Gazlı"],
     },
+    "Tost Makineleri": {
+        "types": ["sandvic_tost_makinesi", "krep_tost_makinesi", "panini_makinesi"],
+        "fields": ["plate_size", "plate_type", "energy_type"],
+        "energy_options": ["Elektrikli", "Gazlı"],
+        "plate_type_options": ["Düz", "Oluklu", "Karışık"],
+    },
+    "Arabalar": {
+        "types": ["pilav_arabasi", "kokorec_arabasi", "tantuni_arabasi", "doner_arabasi", "servis_arabasi", "tasima_arabasi"],
+        "fields": ["length_cm", "width_cm", "height_cm", "energy_type", "has_glass", "wheel_count"],
+        "energy_options": ["Tüplü", "Doğalgaz", "Elektrikli", "Kömürlü", "Gazlı", "Yok"],
+    },
+    "Dondurucular": {
+        "types": ["dikey_dondurucu", "yatay_dondurucu", "soklama_dondurucu", "dondurma_dondurucu"],
+        "fields": ["volume_liters", "temperature_min", "length_cm", "width_cm", "height_cm"],
+        "energy_options": [],
+    },
+    "Aspiratörler": {
+        "types": ["duvar_tipi_aspirator", "ada_tipi_aspirator", "tavan_tipi_aspirator", "kanalli_aspirator"],
+        "fields": ["length_cm", "width_cm", "height_cm", "filter_type", "has_motor"],
+        "energy_options": [],
+    },
+    "Kesme Makineleri": {
+        "types": ["et_kiyma_makinesi", "sebze_dograma_makinesi", "ekmek_dilimleme_makinesi", "et_dilimleme_makinesi"],
+        "fields": ["power_hp", "blade_diameter_mm", "capacity_kg_h", "energy_type"],
+        "energy_options": ["Elektrikli", "Manuel"],
+    },
+    "Mikserler": {
+        "types": ["planet_mikser", "spiral_mikser", "cirpma_makinesi", "hamur_yogurma_makinesi"],
+        "fields": ["capacity_liters", "power_hp", "speed_count"],
+        "energy_options": [],
+    },
+    "Izgaralar": {
+        "types": ["gazli_izgara", "elektrikli_izgara", "kontakt_izgara", "tavuk_izgara"],
+        "fields": ["energy_type", "cooking_area", "length_cm", "width_cm", "height_cm"],
+        "energy_options": ["Gazlı", "Elektrikli", "Kömürlü"],
+    },
+    "Kahve Makineleri": {
+        "types": ["espresso_makinesi", "filtre_kahve_makinesi", "turk_kahvesi_makinesi", "otomatik_kahve_makinesi"],
+        "fields": ["group_count", "boiler_capacity", "brand"],
+        "energy_options": [],
+    },
+    "Çay Kazanları": {
+        "types": ["elektrikli_cay_kazani", "gazli_cay_kazani", "termos_cay_kazani"],
+        "fields": ["capacity_liters", "energy_type", "tap_count"],
+        "energy_options": ["Elektrikli", "Gazlı"],
+    },
+    "Bulaşık Makineleri": {
+        "types": ["bulasik_yikama_makinesi", "bulasik_kurutma_makinesi", "tunel_tipi_bulasik_makinesi"],
+        "fields": ["capacity_basket_h", "wash_type", "length_cm", "width_cm", "height_cm"],
+        "energy_options": [],
+    },
+    "Ekmek Kızartma Makineleri": {
+        "types": ["ekmek_kizartma_makinesi", "coklu_ekmek_kizartma_makinesi"],
+        "fields": ["slice_capacity", "conveyor_type"],
+        "energy_options": [],
+    },
+    "Döner Makineleri": {
+        "types": ["elektrikli_doner_makinesi", "gazli_doner_makinesi", "dikey_doner_makinesi"],
+        "fields": ["energy_type", "capacity_kg", "burner_count", "height_cm"],
+        "energy_options": ["Gazlı", "Elektrikli"],
+    },
+    "Pizza Fırınları": {
+        "types": ["tas_firin", "elektrikli_pizza_firini", "tunel_pizza_firini"],
+        "fields": ["energy_type", "pizza_capacity", "pizza_diameter_cm", "deck_count"],
+        "energy_options": ["Gazlı", "Elektrikli", "Odunlu"],
+    },
+    "Krep Makineleri": {
+        "types": ["krep_tavasi", "elektrikli_krep_makinesi", "gazli_krep_makinesi"],
+        "fields": ["plate_diameter_cm", "plate_count", "energy_type"],
+        "energy_options": ["Elektrikli", "Gazlı"],
+    },
+    "Waffle Makineleri": {
+        "types": ["elektrikli_waffle_makinesi", "gazli_waffle_makinesi"],
+        "fields": ["mold_count", "mold_shape", "energy_type"],
+        "energy_options": ["Elektrikli", "Gazlı"],
+    },
+    "Raflar": {
+        "types": ["duz_raf", "kose_raf", "duvar_rafi", "delikli_raf"],
+        "fields": ["length_cm", "width_cm", "height_cm", "shelf_count", "load_capacity_kg"],
+        "energy_options": [],
+    },
 }
 
 # ─── Tek adımlık analiz + form prompt'u ───────────────────────
@@ -149,8 +230,13 @@ class ProductAnalysisAgent:
             for cat_name, cat_info in FRONTEND_CATEGORY_FIELDS.items():
                 types_str = ", ".join(cat_info["types"])
                 fields_str = ", ".join(cat_info["fields"])
-                energy_str = f" (energy_type seçenekleri: {', '.join(cat_info['energy_options'])})" if cat_info["energy_options"] else ""
-                category_types_desc += f"- {cat_name}: types=[{types_str}], fields=[{fields_str}]{energy_str}\n"
+                extras = []
+                if cat_info.get("energy_options"):
+                    extras.append(f"energy_type seçenekleri: {', '.join(cat_info['energy_options'])}")
+                if cat_info.get("plate_type_options"):
+                    extras.append(f"plate_type seçenekleri: {', '.join(cat_info['plate_type_options'])}")
+                extras_str = f" ({'; '.join(extras)})" if extras else ""
+                category_types_desc += f"- {cat_name}: types=[{types_str}], fields=[{fields_str}]{extras_str}\n"
 
             # ── Adım 2: LLM çağrısı — tek seferde form oluştur ──
             prompt = UNIFIED_PROMPT.format(

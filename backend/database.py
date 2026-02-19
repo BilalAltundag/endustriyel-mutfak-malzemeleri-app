@@ -7,17 +7,24 @@ Auto-increment ID pattern kullanılır (frontend uyumluluğu için).
 from pymongo import MongoClient, ASCENDING, DESCENDING
 from datetime import datetime
 import os
+import certifi
 from dotenv import load_dotenv
 
 load_dotenv()
 
 MONGODB_URI = os.getenv(
     "MONGODB_URI",
-    "mongodb+srv://bilalaltundag2000_db_user:nNfMQkWlzCQfyjdy@cluster0.29sib5m.mongodb.net/"
+    "mongodb://bilalaltundag2000_db_user:nNfMQkWlzCQfyjdy@ac-trtjqih-shard-00-00.29sib5m.mongodb.net:27017,ac-trtjqih-shard-00-01.29sib5m.mongodb.net:27017,ac-trtjqih-shard-00-02.29sib5m.mongodb.net:27017/ayhanticaret?replicaSet=atlas-uywhyz-shard-0&authSource=admin"
 )
 MONGODB_DB_NAME = os.getenv("MONGODB_DB_NAME", "ayhanticaret")
 
-client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=10000)
+client = MongoClient(
+    MONGODB_URI,
+    serverSelectionTimeoutMS=10000,
+    tls=True,
+    tlsCAFile=certifi.where(),
+    tlsAllowInvalidCertificates=True,
+)
 db = client[MONGODB_DB_NAME]
 
 # ─── Collections ───
@@ -45,26 +52,27 @@ def get_next_id(collection_name: str) -> int:
 
 def init_db():
     """Indexler ve başlangıç verileri oluşturur."""
-    # Indexes
-    categories_col.create_index([("name", ASCENDING)], unique=True)
-    categories_col.create_index([("id", ASCENDING)], unique=True)
-    products_col.create_index([("id", ASCENDING)], unique=True)
-    products_col.create_index([("name", ASCENDING)])
-    products_col.create_index([("category_id", ASCENDING)])
-    products_col.create_index([("created_at", DESCENDING)])
-    transactions_col.create_index([("id", ASCENDING)], unique=True)
-    transactions_col.create_index([("date", DESCENDING)])
-    expenses_col.create_index([("id", ASCENDING)], unique=True)
-    expenses_col.create_index([("date", DESCENDING)])
-    reminders_col.create_index([("id", ASCENDING)], unique=True)
-    reminders_col.create_index([("date", ASCENDING)])
-    notes_col.create_index([("id", ASCENDING)], unique=True)
-    notes_col.create_index([("date", DESCENDING)])
-    price_ranges_col.create_index([("id", ASCENDING)], unique=True)
-    suppliers_col.create_index([("id", ASCENDING)], unique=True)
-    suppliers_col.create_index([("name", ASCENDING)])
-
-    print(f"MongoDB indexes created on {MONGODB_DB_NAME}")
+    try:
+        categories_col.create_index([("name", ASCENDING)], unique=True)
+        categories_col.create_index([("id", ASCENDING)], unique=True)
+        products_col.create_index([("id", ASCENDING)], unique=True)
+        products_col.create_index([("name", ASCENDING)])
+        products_col.create_index([("category_id", ASCENDING)])
+        products_col.create_index([("created_at", DESCENDING)])
+        transactions_col.create_index([("id", ASCENDING)], unique=True)
+        transactions_col.create_index([("date", DESCENDING)])
+        expenses_col.create_index([("id", ASCENDING)], unique=True)
+        expenses_col.create_index([("date", DESCENDING)])
+        reminders_col.create_index([("id", ASCENDING)], unique=True)
+        reminders_col.create_index([("date", ASCENDING)])
+        notes_col.create_index([("id", ASCENDING)], unique=True)
+        notes_col.create_index([("date", DESCENDING)])
+        price_ranges_col.create_index([("id", ASCENDING)], unique=True)
+        suppliers_col.create_index([("id", ASCENDING)], unique=True)
+        suppliers_col.create_index([("name", ASCENDING)])
+        print(f"MongoDB indexes created on {MONGODB_DB_NAME}")
+    except Exception as e:
+        print(f"WARNING: MongoDB init_db failed (will retry on first request): {e}")
 
 
 def doc_to_dict(doc: dict) -> dict:

@@ -1,181 +1,106 @@
-# Endüstriyel Mutfak Yönetim Sistemi
+# Ayhan Ticaret - Endüstriyel Mutfak Yönetim Sistemi
 
-Endüstriyel mutfak malzemesi alım-satım işletmesi için kapsamlı yönetim sistemi.
+Endüstriyel mutfak malzemesi alım-satım işletmesi için kapsamlı yönetim sistemi. AI destekli ürün analizi, stok takibi, finans yönetimi ve daha fazlası.
 
 ## Özellikler
 
-- ✅ **Ürün Yönetimi**: Ürün ekleme, düzenleme, resim yükleme, fiyat takibi
-- ✅ **Kategori Yönetimi**: Kategoriler oluşturma ve yönetme
-- ✅ **Stok & Envanter**: Stok durumu, kategori ve malzeme bazlı dağılım
-- ✅ **Finans Takibi**: Gelir-gider takibi, işlem kayıtları
-- ✅ **Takvim Sistemi**: Günlük hareketler, aylık özetler
-- ✅ **Hatırlatıcılar & Notlar**: Tarihli hatırlatmalar ve notlar
-- ✅ **Fiyat Aralıkları**: Piyasa fiyat referansları
+- **Ürün Yönetimi** — Ürün ekleme, düzenleme, resim yükleme, fiyat takibi
+- **AI Ürün Analizi** — Sesli/yazılı açıklamadan otomatik form doldurma (Gemini AI)
+- **Kategori Sistemi** — 20+ endüstriyel mutfak kategorisi ve alt tipleri
+- **Stok & Envanter** — Stok durumu, kategori ve malzeme bazlı dağılım
+- **Finans Takibi** — Gelir-gider takibi, işlem kayıtları
+- **Takvim & Hatırlatıcılar** — Günlük hareketler, aylık özetler, notlar
+- **Tedarikçi Yönetimi** — Satın alınan yerlerin bilgileri
+- **Fiyat Aralıkları** — Piyasa fiyat referansları
 
 ## Teknolojiler
 
 ### Backend
-- Python 3.8+ (Python 3.11 veya 3.12 önerilir)
+- Python 3.11+
 - FastAPI
-- SQLite
-- SQLAlchemy
+- MongoDB Atlas (PyMongo)
+- Google Gemini AI (ürün analizi)
+- Groq Whisper (ses-metin çevirme)
+- LangChain
 
 ### Frontend
-- Next.js 14
-- TypeScript
-- TailwindCSS
+- Next.js 14 + TypeScript
+- TailwindCSS + ShadCN/UI
 - Lucide Icons
 
-## Kurulum
+## Hızlı Başlangıç
 
-### Gereksinimler
-- Python 3.8-3.12 (Python 3.13 henüz bazı paketlerle uyumlu olmayabilir)
-- Node.js 18 veya üzeri
-- npm veya yarn
-
-### Hızlı Başlatma
-
-1. Projeyi klonlayın veya indirin
-2. `start.bat` dosyasını çift tıklayın
-
-Bu script:
-- Gerekli dizinleri oluşturur
-- Veritabanını başlatır (ilk çalıştırmada)
-- Backend ve frontend bağımlılıklarını yükler
-- Her iki sunucuyu başlatır
-- Tarayıcıyı açar
-
-### Manuel Kurulum
-
-#### Backend
-```bash
+```powershell
+# Backend
 cd backend
 python -m venv venv
-venv\Scripts\activate  # Windows
-# veya: source venv/bin/activate  # Linux/Mac
-pip install --upgrade pip wheel setuptools
+.\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python init_db.py
-python main.py
-```
+python main.py                    # → http://localhost:8000
 
-**Not**: Eğer `pydantic-core` kurulumunda sorun yaşıyorsanız:
-- Python 3.11 veya 3.12 kullanın (3.13 henüz tam desteklenmiyor)
-- Veya `backend/install.bat` dosyasını çalıştırın
-
-#### Frontend
-```bash
+# Frontend (ayrı terminal)
 cd frontend
-npm cache clean --force
 npm install
-npm run dev
+npm run dev                       # → http://localhost:3000
 ```
 
-**Not**: Eğer npm access token hatası alıyorsanız:
-```bash
-npm logout
-npm cache clean --force
-npm install
-```
+Detaylı kurulum: [docs/kurulum.md](docs/kurulum.md)
 
-## Sorun Giderme
-
-### Backend Kurulum Sorunları
-
-**Problem**: `pydantic-core` kurulum hatası (Rust gerektiriyor)
-
-**Çözümler**:
-1. Python 3.11 veya 3.12 kullanın (önerilir)
-2. `backend/install.bat` dosyasını çalıştırın
-3. Manuel olarak:
-   ```bash
-   cd backend
-   venv\Scripts\activate
-   pip install --upgrade pip wheel setuptools
-   pip install pydantic-core --only-binary :all:
-   pip install -r requirements.txt
-   ```
-
-### Frontend Kurulum Sorunları
-
-**Problem**: npm access token hatası
-
-**Çözümler**:
-```bash
-cd frontend
-npm logout
-npm cache clean --force
-npm install
-```
-
-## Önceden Tanımlı Veriler
-
-Endüstriyel mutfak kategorileri ve ürünlerini otomatik yüklemek için:
-
-```bash
-cd backend
-python seed_data.py
-```
-
-Veya Windows'ta:
-```bash
-backend\seed.bat
-```
-
-Bu script 20 kategori ve 100+ ürünü otomatik olarak ekler.
-
-## Kullanım
-
-1. Sistem başlatıldıktan sonra tarayıcıda `http://localhost:3000` adresine gidin
-2. Ana sayfadan istediğiniz modüle erişebilirsiniz:
-   - **Ürünler**: Ürün ekleme ve yönetimi
-   - **Kategoriler**: Kategori yönetimi
-   - **Tedarikçiler**: Satın aldığınız yerlerin bilgileri
-   - **Notlar**: Genel notlar ve hatırlatıcılar
-   - **Takvim**: Günlük hareketler ve özetler
-   - **Finans**: Gelir-gider takibi (işlem ve gider ekleme)
-   - **Envanter**: Stok durumu ve dağılım
-   - **Fiyat Aralıkları**: Piyasa fiyat referansları
-
-## Veritabanı
-
-Veritabanı `data/app.db` dosyasında saklanır. Bu dosya local olarak tutulur ve tüm verileriniz burada saklanır.
-
-## Dosya Yapısı
+## Proje Yapısı
 
 ```
-.
-├── backend/           # Python FastAPI backend
-│   ├── api/          # API endpoints
-│   ├── database.py   # Veritabanı modelleri
-│   ├── models.py     # Pydantic modelleri
-│   ├── main.py       # FastAPI uygulaması
-│   └── install.bat   # Manuel kurulum scripti
-├── frontend/         # Next.js frontend
-│   ├── app/          # Next.js sayfaları
-│   ├── components/   # React bileşenleri
-│   └── lib/          # Yardımcı fonksiyonlar
-├── data/             # SQLite veritabanı (otomatik oluşturulur)
-├── uploads/          # Yüklenen resimler (otomatik oluşturulur)
-├── start.bat         # Başlatma scripti
-└── README.md         # Bu dosya
+ayhanticaret_app/
+├── backend/
+│   ├── agent/           # AI ürün analizi pipeline'ı
+│   │   ├── agent.py     # Direct Pipeline (tek LLM çağrısı)
+│   │   ├── config.py    # API key ve model konfigürasyonu
+│   │   └── retry.py     # Rate limit retry & fallback
+│   ├── api/             # FastAPI endpoint'leri
+│   │   ├── products.py
+│   │   ├── categories.py
+│   │   ├── ai_agent.py  # AI analiz & ses çevirme
+│   │   ├── finance.py
+│   │   ├── inventory.py
+│   │   ├── calendar.py
+│   │   ├── notes.py
+│   │   ├── suppliers.py
+│   │   └── price_ranges.py
+│   ├── database.py      # MongoDB Atlas bağlantısı
+│   ├── main.py          # FastAPI uygulaması
+│   └── requirements.txt
+├── frontend/
+│   ├── app/             # Next.js sayfaları
+│   ├── components/      # React bileşenleri
+│   └── lib/             # API client, kategori şablonları
+├── docs/                # Dökümentasyon
+│   ├── kurulum.md       # Kurulum & çalıştırma rehberi
+│   └── ai-sistem-analizi.md  # AI maliyet & kota analizi
+├── uploads/             # Yüklenen görseller (otomatik)
+├── start.bat            # Tek tıkla başlatma (Windows)
+└── README.md
 ```
 
-## Notlar
+## Dökümentasyon
 
-- Sistem tamamen local çalışır, internet gerektirmez
-- Veriler `data/app.db` dosyasında saklanır
-- Yüklenen resimler `uploads/` klasöründe saklanır
-- Backend varsayılan olarak `http://localhost:8000` adresinde çalışır
-- Frontend varsayılan olarak `http://localhost:3000` adresinde çalışır
+| Döküman | İçerik |
+|---------|--------|
+| [docs/kurulum.md](docs/kurulum.md) | Kurulum, çalıştırma, sorun giderme |
+| [docs/ai-sistem-analizi.md](docs/ai-sistem-analizi.md) | AI API kullanımı, maliyet ve kota analizi |
 
-## Geliştirme
+## API
 
-### Backend API Dokümantasyonu
-Backend başlatıldıktan sonra `http://localhost:8000/docs` adresinden Swagger UI ile API dokümantasyonuna erişebilirsiniz.
+Backend başlatıldıktan sonra Swagger UI: http://localhost:8000/docs
 
-### Veritabanı Sıfırlama
-Veritabanını sıfırlamak için `data/app.db` dosyasını silin ve `start.bat` dosyasını tekrar çalıştırın.
+Ana endpoint'ler:
+
+| Endpoint | Açıklama |
+|----------|----------|
+| `POST /api/ai/analyze` | AI ürün analizi (metin + fotoğraf) |
+| `POST /api/ai/transcribe` | Ses → metin çevirme |
+| `GET/POST /api/products` | Ürün CRUD |
+| `GET/POST /api/categories` | Kategori CRUD |
+| `GET/POST /api/finance` | Finans işlemleri |
+| `GET/POST /api/suppliers` | Tedarikçi yönetimi |
 
 ## Lisans
 

@@ -81,7 +81,7 @@ function getKeySpecs(specs: Record<string, any>): string[] {
 
 function getImageUrl(path: string): string {
   if (path.startsWith('http')) return path
-  return `http://localhost:8002${path}`
+  return `/api/static${path}`
 }
 
 export default function ProductsPage() {
@@ -109,7 +109,7 @@ export default function ProductsPage() {
       if (filter.status) params.status = filter.status
       const response = await productsApi.getAll(params)
       setProducts(response.data)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching products:', error)
     } finally {
       setLoading(false)
@@ -120,7 +120,7 @@ export default function ProductsPage() {
     try {
       const response = await categoriesApi.getAll(true)
       setCategories(response.data)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching categories:', error)
     }
   }

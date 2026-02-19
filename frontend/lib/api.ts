@@ -1,9 +1,7 @@
 import axios from 'axios'
 
-// Local: doğrudan backend, ngrok: backend ngrok URL'i
-const BACKEND_NGROK = 'https://5135-2a00-1880-a249-685b-f86d-a88a-6c68-b89b.ngrok-free.app'
-const isLocal = typeof window !== 'undefined' && window.location.hostname === 'localhost'
-const API_BASE_URL = isLocal ? 'http://localhost:8002/api' : `${BACKEND_NGROK}/api`
+// Next.js rewrites proxy /api/* → localhost:8000/api/* (no CORS needed)
+const API_BASE_URL = '/api'
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -15,9 +13,9 @@ const api = axios.create({
 
 // Products
 export const productsApi = {
-  getAll: (params?: any) => api.get('/products', { params }),
+  getAll: (params?: any) => api.get('/products/', { params }),
   getById: (id: number) => api.get(`/products/${id}`),
-  create: (data: any) => api.post('/products', data),
+  create: (data: any) => api.post('/products/', data),
   update: (id: number, data: any) => api.put(`/products/${id}`, data),
   delete: (id: number) => api.delete(`/products/${id}`),
   uploadImage: (id: number, file: File) => {
@@ -34,9 +32,9 @@ export const productsApi = {
 // Categories
 export const categoriesApi = {
   getAll: (includeInactive?: boolean) => 
-    api.get('/categories', { params: { include_inactive: includeInactive } }),
+    api.get('/categories/', { params: { include_inactive: includeInactive } }),
   getById: (id: number) => api.get(`/categories/${id}`),
-  create: (data: any) => api.post('/categories', data),
+  create: (data: any) => api.post('/categories/', data),
   update: (id: number, data: any) => api.put(`/categories/${id}`, data),
   delete: (id: number) => api.delete(`/categories/${id}`),
 }
@@ -87,9 +85,9 @@ export const notesApi = {
 
 // Price Ranges
 export const priceRangesApi = {
-  getAll: (params?: any) => api.get('/price-ranges', { params }),
+  getAll: (params?: any) => api.get('/price-ranges/', { params }),
   getById: (id: number) => api.get(`/price-ranges/${id}`),
-  create: (data: any) => api.post('/price-ranges', data),
+  create: (data: any) => api.post('/price-ranges/', data),
   update: (id: number, data: any) => api.put(`/price-ranges/${id}`, data),
   delete: (id: number) => api.delete(`/price-ranges/${id}`),
 }
@@ -97,9 +95,9 @@ export const priceRangesApi = {
 // Suppliers
 export const suppliersApi = {
   getAll: (includeInactive?: boolean) => 
-    api.get('/suppliers', { params: { include_inactive: includeInactive } }),
+    api.get('/suppliers/', { params: { include_inactive: includeInactive } }),
   getById: (id: number) => api.get(`/suppliers/${id}`),
-  create: (data: any) => api.post('/suppliers', data),
+  create: (data: any) => api.post('/suppliers/', data),
   update: (id: number, data: any) => api.put(`/suppliers/${id}`, data),
   delete: (id: number) => api.delete(`/suppliers/${id}`),
 }
