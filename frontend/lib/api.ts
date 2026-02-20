@@ -102,6 +102,32 @@ export const suppliersApi = {
   delete: (id: number) => api.delete(`/suppliers/${id}`),
 }
 
+// Price Scraper (AI Browser Agent)
+export const priceScraperApi = {
+  search: (data: {
+    category_id: number
+    category_name: string
+    product_type: string
+    product_type_label: string
+    location: string
+    time_period: string
+  }) => api.post('/price-scraper/search', data, { timeout: 300000 }),
+  getResults: (categoryId?: number) =>
+    api.get('/price-scraper/results', { params: categoryId ? { category_id: categoryId } : {} }),
+  getResult: (categoryId: number, productType: string) =>
+    api.get(`/price-scraper/results/${categoryId}/${productType}`),
+}
+
+// Marketplace Search (AI Browser Agent)
+export const marketplaceSearchApi = {
+  search: (data: { query: string; location: string; time_period: string }) =>
+    api.post('/marketplace-search/search', data, { timeout: 300000 }),
+  getHistory: (limit?: number) =>
+    api.get('/marketplace-search/history', { params: limit ? { limit } : {} }),
+  getById: (id: number) => api.get(`/marketplace-search/history/${id}`),
+  delete: (id: number) => api.delete(`/marketplace-search/history/${id}`),
+}
+
 // AI Agent
 export const aiApi = {
   status: () => api.get('/ai/status'),

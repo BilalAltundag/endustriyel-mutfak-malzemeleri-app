@@ -5,7 +5,6 @@ import { useRouter, useParams } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { productsApi, categoriesApi } from '@/lib/api'
-import { CATEGORY_TEMPLATES, getFieldsForType } from '@/lib/categoryTemplates'
 import Button from '@/components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 
@@ -57,7 +56,6 @@ export default function EditProductPage() {
       })
       setCategories(categoriesRes.data)
 
-      // Ürün çeşidi ve teknik özellikleri yükle
       if (product.product_type) {
         setSelectedProductType(product.product_type)
       }
@@ -77,27 +75,27 @@ export default function EditProductPage() {
     }
   }
 
-  // Seçili kategorinin template'ini bul
-  const getTemplateForCategory = () => {
+  const getSelectedCategory = () => {
     if (!formData.category_id) return null
-    const selectedCategory = categories.find(
-      (cat) => cat.id === parseInt(formData.category_id)
-    )
-    if (!selectedCategory) return null
-    return CATEGORY_TEMPLATES[selectedCategory.name] || null
+    return categories.find((cat) => cat.id === parseInt(formData.category_id)) || null
   }
 
-  const template = getTemplateForCategory()
-  const activeFields = template && selectedProductType
-    ? getFieldsForType(template, selectedProductType)
-    : []
+  const selectedCategory = getSelectedCategory()
+  const categoryProductTypes: { value: string; label: string; fields?: any[] | null }[] = selectedCategory?.product_types || []
+  const defaultFields: any[] = selectedCategory?.default_fields || []
+
+  const getActiveFields = (): any[] => {
+    if (!selectedProductType) return []
+    const pt = categoryProductTypes.find((t) => t.value === selectedProductType)
+    if (pt?.fields && pt.fields.length > 0) return pt.fields
+    return defaultFields
+  }
+  const activeFields = getActiveFields()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
       setSaving(true)
-
-      // extra_specs olarak teknik özellikleri JSON kaydet
       const extraSpecs: Record<string, any> = {}
       for (const field of activeFields) {
         const val = dynamicFields[field.name]
@@ -132,50 +130,46 @@ export default function EditProductPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div>Yükleniyor...</div>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-gray-500">Yükleniyor...</div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-6">
+    <div className="min-h-screen">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+        <div className="mb-5 sm:mb-6">
           <Link
             href="/products"
-            className="inline-flex items-center text-gray-600 hover:text-gray-900 mb-4"
+            className="inline-flex items-center text-sm text-gray-500 hover:text-gray-900 mb-3 sm:mb-4"
           >
-            <ArrowLeft className="w-4 h-4 mr-2" />
+            <ArrowLeft className="w-4 h-4 mr-1.5" />
             Geri Dön
           </Link>
-          <h1 className="text-3xl font-bold text-gray-900">Ürün Düzenle</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Ürün Düzenle</h1>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Kategori ve Ürün Bilgileri */}
+        <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+          {/* Product Info */}
           <Card>
-            <CardHeader>
-              <CardTitle>Ürün Bilgileri</CardTitle>
+            <CardHeader className="px-4 sm:px-6">
+              <CardTitle className="text-base sm:text-xl">Ürün Bilgileri</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3 sm:space-y-4 px-4 sm:px-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Ürün Adı *
-                </label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Ürün Adı *</label>
                 <input
                   type="text"
                   required
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Kategori
-                </label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Kategori</label>
                 <select
                   value={formData.category_id}
                   onChange={(e) => {
@@ -183,34 +177,26 @@ export default function EditProductPage() {
                     setSelectedProductType('')
                     setDynamicFields({})
                   }}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                 >
                   <option value="">Kategori Seçiniz</option>
                   {categories.map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
                   ))}
                 </select>
               </div>
 
-              {formData.category_id && template && (
+              {formData.category_id && categoryProductTypes.length > 0 && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Ürün Çeşidi
-                  </label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Ürün Çeşidi</label>
                   <select
                     value={selectedProductType}
-                    onChange={(e) => {
-                      setSelectedProductType(e.target.value)
-                    }}
-                    className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    onChange={(e) => setSelectedProductType(e.target.value)}
+                    className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   >
                     <option value="">Ürün Çeşidi Seçiniz</option>
-                    {template.types.map((t) => (
-                      <option key={t.value} value={t.value}>
-                        {t.label}
-                      </option>
+                    {categoryProductTypes.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
                     ))}
                   </select>
                 </div>
@@ -218,43 +204,29 @@ export default function EditProductPage() {
             </CardContent>
           </Card>
 
-          {/* Teknik Özellikler */}
+          {/* Technical Specs */}
           {activeFields.length > 0 && (
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <span>Teknik Özellikler</span>
-                  <span className="text-sm font-normal text-gray-500">
-                    (Alıcı için önemli bilgiler)
-                  </span>
-                </CardTitle>
+              <CardHeader className="px-4 sm:px-6">
+                <CardTitle className="text-base sm:text-xl">Teknik Özellikler</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <CardContent className="px-4 sm:px-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   {activeFields.map((field) => (
                     <div key={field.name}>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
                         {field.label}
-                        {field.unit && (
-                          <span className="text-gray-400 ml-1">({field.unit})</span>
-                        )}
+                        {field.unit && <span className="text-gray-400 ml-1">({field.unit})</span>}
                       </label>
                       {field.type === 'select' ? (
                         <select
                           value={dynamicFields[field.name] || ''}
-                          onChange={(e) =>
-                            setDynamicFields((prev) => ({
-                              ...prev,
-                              [field.name]: e.target.value,
-                            }))
-                          }
-                          className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                          onChange={(e) => setDynamicFields((prev) => ({ ...prev, [field.name]: e.target.value }))}
+                          className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                         >
                           <option value="">Seçiniz</option>
-                          {field.options?.map((opt) => (
-                            <option key={opt} value={opt}>
-                              {opt}
-                            </option>
+                          {field.options?.map((opt: string) => (
+                            <option key={opt} value={opt}>{opt}</option>
                           ))}
                         </select>
                       ) : (
@@ -263,13 +235,8 @@ export default function EditProductPage() {
                           step={field.type === 'number' ? 'any' : undefined}
                           value={dynamicFields[field.name] || ''}
                           placeholder={field.placeholder || ''}
-                          onChange={(e) =>
-                            setDynamicFields((prev) => ({
-                              ...prev,
-                              [field.name]: e.target.value,
-                            }))
-                          }
-                          className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                          onChange={(e) => setDynamicFields((prev) => ({ ...prev, [field.name]: e.target.value }))}
+                          className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                         />
                       )}
                     </div>
@@ -279,70 +246,54 @@ export default function EditProductPage() {
             </Card>
           )}
 
-          {/* Fiyat Bilgileri */}
+          {/* Pricing */}
           <Card>
-            <CardHeader>
-              <CardTitle>Fiyat Bilgileri</CardTitle>
+            <CardHeader className="px-4 sm:px-6">
+              <CardTitle className="text-base sm:text-xl">Fiyat Bilgileri</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <CardContent className="space-y-3 sm:space-y-4 px-4 sm:px-6">
+              <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Alış Fiyatı (₺) *
-                  </label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Alış (₺) *</label>
                   <input
                     type="number"
                     step="0.01"
                     required
                     value={formData.purchase_price}
-                    onChange={(e) =>
-                      setFormData({ ...formData, purchase_price: e.target.value })
-                    }
-                    className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    onChange={(e) => setFormData({ ...formData, purchase_price: e.target.value })}
+                    className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Satış Fiyatı (₺) *
-                  </label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Satış (₺) *</label>
                   <input
                     type="number"
                     step="0.01"
                     required
                     value={formData.sale_price}
-                    onChange={(e) =>
-                      setFormData({ ...formData, sale_price: e.target.value })
-                    }
-                    className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    onChange={(e) => setFormData({ ...formData, sale_price: e.target.value })}
+                    className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Pazarlık Payı
-                  </label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Pazarlık Payı</label>
                   <input
                     type="number"
                     step="0.01"
                     value={formData.negotiation_margin}
-                    onChange={(e) =>
-                      setFormData({ ...formData, negotiation_margin: e.target.value })
-                    }
-                    className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    onChange={(e) => setFormData({ ...formData, negotiation_margin: e.target.value })}
+                    className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Pazarlık Tipi
-                  </label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Pazarlık Tipi</label>
                   <select
                     value={formData.negotiation_type}
-                    onChange={(e) =>
-                      setFormData({ ...formData, negotiation_type: e.target.value })
-                    }
-                    className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    onChange={(e) => setFormData({ ...formData, negotiation_type: e.target.value })}
+                    className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   >
                     <option value="amount">Tutar (₺)</option>
                     <option value="percentage">Yüzde (%)</option>
@@ -352,38 +303,30 @@ export default function EditProductPage() {
             </CardContent>
           </Card>
 
-          {/* Diğer Bilgiler */}
+          {/* Other Info */}
           <Card>
-            <CardHeader>
-              <CardTitle>Diğer Bilgiler</CardTitle>
+            <CardHeader className="px-4 sm:px-6">
+              <CardTitle className="text-base sm:text-xl">Diğer Bilgiler</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3 sm:space-y-4 px-4 sm:px-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Malzeme
-                </label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Malzeme</label>
                 <input
                   type="text"
                   value={formData.material}
-                  onChange={(e) =>
-                    setFormData({ ...formData, material: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, material: e.target.value })}
                   placeholder="Bakır, çelik, demir, alüminyum vs."
-                  className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Durum
-                  </label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Durum</label>
                   <select
                     value={formData.status}
-                    onChange={(e) =>
-                      setFormData({ ...formData, status: e.target.value })
-                    }
-                    className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                    className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   >
                     <option value="working">Çalışıyor</option>
                     <option value="broken">Arızalı</option>
@@ -391,15 +334,11 @@ export default function EditProductPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Stok Durumu
-                  </label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Stok Durumu</label>
                   <select
                     value={formData.stock_status}
-                    onChange={(e) =>
-                      setFormData({ ...formData, stock_status: e.target.value })
-                    }
-                    className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    onChange={(e) => setFormData({ ...formData, stock_status: e.target.value })}
+                    className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   >
                     <option value="available">Mevcut</option>
                     <option value="sold">Satıldı</option>
@@ -409,31 +348,25 @@ export default function EditProductPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Notlar
-                </label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Notlar</label>
                 <textarea
                   value={formData.notes}
-                  onChange={(e) =>
-                    setFormData({ ...formData, notes: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   placeholder="Ek notlar..."
-                  className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   rows={3}
                 />
               </div>
             </CardContent>
           </Card>
 
-          {/* Kaydet Butonları */}
-          <div className="flex gap-4">
-            <Button type="submit" disabled={saving}>
+          {/* Submit */}
+          <div className="flex gap-3">
+            <Button type="submit" disabled={saving} className="flex-1 sm:flex-none">
               {saving ? 'Kaydediliyor...' : 'Güncelle'}
             </Button>
-            <Link href="/products">
-              <Button type="button" variant="outline">
-                İptal
-              </Button>
+            <Link href="/products" className="flex-1 sm:flex-none">
+              <Button type="button" variant="outline" className="w-full">İptal</Button>
             </Link>
           </div>
         </form>

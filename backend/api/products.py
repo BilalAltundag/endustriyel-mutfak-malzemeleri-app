@@ -41,25 +41,49 @@ def _delete_from_cloudinary(url: str) -> None:
         logger.warning("Cloudinary silme hatası: %s", e)
 
 
+def _build_category_map(category_ids: list) -> dict:
+    """Batch-fetch categories → {id: {id, name}} map."""
+    unique_ids = list({cid for cid in category_ids if cid})
+    if not unique_ids:
+        return {}
+    cats = categories_col.find(
+        {"id": {"$in": unique_ids}},
+        {"_id": 0, "id": 1, "name": 1},
+    )
+    return {c["id"]: {"id": c["id"], "name": c["name"]} for c in cats}
+
+
 def _enrich_product(doc: dict) -> dict:
-    """Ürün doc'unu API yanıtı için zenginleştirir."""
+    """Single product enrichment (for create/update/get-by-id)."""
     if doc is None:
         return None
     doc.pop("_id", None)
-
     if doc.get("category_id"):
-        cat = categories_col.find_one({"id": doc["category_id"]})
-        if cat:
-            doc["category"] = {"id": cat["id"], "name": cat["name"]}
-        else:
-            doc["category"] = None
+        cat = categories_col.find_one(
+            {"id": doc["category_id"]},
+            {"_id": 0, "id": 1, "name": 1},
+        )
+        doc["category"] = {"id": cat["id"], "name": cat["name"]} if cat else None
     else:
         doc["category"] = None
-
     if doc.get("images") is None:
         doc["images"] = []
-
     return doc
+
+
+def _enrich_products_batch(docs: list) -> list:
+    """Batch-enrich products: 1 category query instead of N."""
+    cat_ids = [d.get("category_id") for d in docs if d.get("category_id")]
+    cat_map = _build_category_map(cat_ids)
+    result = []
+    for doc in docs:
+        doc.pop("_id", None)
+        cid = doc.get("category_id")
+        doc["category"] = cat_map.get(cid) if cid else None
+        if doc.get("images") is None:
+            doc["images"] = []
+        result.append(doc)
+    return result
 
 
 @router.get("/")
@@ -75,8 +99,8 @@ def get_products(
     if stock_status:
         query["stock_status"] = stock_status
 
-    docs = products_col.find(query).sort("created_at", -1).skip(skip).limit(limit)
-    return [_enrich_product(d) for d in docs]
+    docs = list(products_col.find(query).sort("created_at", -1).skip(skip).limit(limit))
+    return _enrich_products_batch(docs)
 
 
 @router.get("/{product_id}")

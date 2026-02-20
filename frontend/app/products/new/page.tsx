@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Sparkles, Upload, X, Loader2, AlertCircle, CheckCircle2, Mic, MicOff, Camera, Info, ChevronDown, ChevronUp } from 'lucide-react'
 import Link from 'next/link'
 import { productsApi, categoriesApi, aiApi } from '@/lib/api'
-import { CATEGORY_TEMPLATES, getFieldsForType } from '@/lib/categoryTemplates'
 import Button from '@/components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 
@@ -28,7 +27,6 @@ export default function NewProductPage() {
     notes: '',
   })
 
-  // ─── AI Assist State ───
   const [aiImages, setAiImages] = useState<File[]>([])
   const [aiImagePreviews, setAiImagePreviews] = useState<string[]>([])
   const [aiDescription, setAiDescription] = useState('')
@@ -39,11 +37,9 @@ export default function NewProductPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
 
-  // ─── Teknik Bilgi Rehberi State ───
   const [showSpecGuide, setShowSpecGuide] = useState(false)
   const [expandedGuideCategory, setExpandedGuideCategory] = useState<string | null>(null)
 
-  // ─── Ses Kayıt State (MediaRecorder + Whisper) ───
   const [isRecording, setIsRecording] = useState(false)
   const [isTranscribing, setIsTranscribing] = useState(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -62,29 +58,28 @@ export default function NewProductPage() {
     }
   }
 
-  // Seçili kategorinin template'ini bul
-  const getTemplateForCategory = () => {
+  const getSelectedCategory = () => {
     if (!formData.category_id) return null
-    const selectedCategory = categories.find(
-      (cat) => cat.id === parseInt(formData.category_id)
-    )
-    if (!selectedCategory) return null
-    return CATEGORY_TEMPLATES[selectedCategory.name] || null
+    return categories.find((cat) => cat.id === parseInt(formData.category_id)) || null
   }
 
-  const template = getTemplateForCategory()
-  const activeFields = template && selectedProductType
-    ? getFieldsForType(template, selectedProductType)
-    : []
+  const selectedCategory = getSelectedCategory()
+  const categoryProductTypes: { value: string; label: string; fields?: any[] | null }[] = selectedCategory?.product_types || []
+  const defaultFields: any[] = selectedCategory?.default_fields || []
 
-  // ─── Ses Kayıt Kontrol ───
+  const getActiveFields = (): any[] => {
+    if (!selectedProductType) return []
+    const pt = categoryProductTypes.find((t) => t.value === selectedProductType)
+    if (pt?.fields && pt.fields.length > 0) return pt.fields
+    return defaultFields
+  }
+  const activeFields = getActiveFields()
+
   const toggleRecording = useCallback(async () => {
     if (isRecording && mediaRecorderRef.current) {
-      // Kaydı durdur
       mediaRecorderRef.current.stop()
       setIsRecording(false)
     } else {
-      // Kayda başla
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
         const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
@@ -97,10 +92,7 @@ export default function NewProductPage() {
         }
 
         mediaRecorder.onstop = async () => {
-          // Stream'i kapat
           stream.getTracks().forEach((track) => track.stop())
-
-          // Blob oluştur ve Whisper'a gönder
           const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
           if (audioBlob.size < 100) return
 
@@ -129,14 +121,10 @@ export default function NewProductPage() {
     }
   }, [isRecording])
 
-  // ─── AI Resim Yükleme ───
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     if (files.length === 0) return
-
     setAiImages((prev) => [...prev, ...files])
-
-    // Preview oluştur
     files.forEach((file) => {
       const reader = new FileReader()
       reader.onload = (ev) => {
@@ -151,7 +139,6 @@ export default function NewProductPage() {
     setAiImagePreviews((prev) => prev.filter((_, i) => i !== index))
   }
 
-  // ─── AI ile Form Doldurma ───
   const handleAiFill = async () => {
     if (!aiDescription.trim()) {
       setAiError('Lütfen ürün açıklaması yazın')
@@ -178,7 +165,6 @@ export default function NewProductPage() {
         return
       }
 
-      // ─── 1. Kategoriyi bul ve seç ───
       const categoryName = form.category_name || ''
       const matchedCategory = categoryName
         ? categories.find((cat) => cat.name === categoryName)
@@ -197,27 +183,19 @@ export default function NewProductPage() {
           notes: form.notes || '',
         }))
 
-        // ─── 2. Ürün çeşidini seç ───
-        const catTemplate = CATEGORY_TEMPLATES[categoryName]
-        if (catTemplate && form.product_type_value) {
-          const matchedType = catTemplate.types.find(
-            (t) => t.value === form.product_type_value
-          )
+        const catTypes: { value: string; label: string }[] = matchedCategory.product_types || []
+        if (catTypes.length > 0 && form.product_type_value) {
+          const matchedType = catTypes.find((t) => t.value === form.product_type_value)
           if (matchedType) {
             setSelectedProductType(matchedType.value)
-            // Ürün adını ayarla (eğer AI'dan gelmediyse template'den al)
             if (!form.name) {
-              setFormData((prev) => ({
-                ...prev,
-                name: matchedType.label,
-              }))
+              setFormData((prev) => ({ ...prev, name: matchedType.label }))
             }
           } else {
             setSelectedProductType(form.product_type_value)
           }
         }
 
-        // ─── 3. Teknik alanları doldur (extra_specs) ───
         if (form.extra_specs && typeof form.extra_specs === 'object') {
           const newDynamicFields: Record<string, string> = {}
           for (const [key, value] of Object.entries(form.extra_specs)) {
@@ -228,7 +206,6 @@ export default function NewProductPage() {
           setDynamicFields(newDynamicFields)
         }
       } else {
-        // Kategori bulunamadı, en azından diğer alanları doldur
         setFormData((prev) => ({
           ...prev,
           name: form.name || '',
@@ -241,43 +218,29 @@ export default function NewProductPage() {
         }))
 
         if (categoryName) {
-          setAiWarnings((prev) => [
-            ...prev,
-            `Kategori "${categoryName}" veritabanında bulunamadı. Lütfen elle seçin.`,
-          ])
+          setAiWarnings((prev) => [...prev, `Kategori "${categoryName}" veritabanında bulunamadı. Lütfen elle seçin.`])
         } else {
-          setAiWarnings((prev) => [
-            ...prev,
-            'AI kategori belirleyemedi. Lütfen elle seçin.',
-          ])
+          setAiWarnings((prev) => [...prev, 'AI kategori belirleyemedi. Lütfen elle seçin.'])
         }
       }
 
-      // Uyarıları göster
       if (data.warnings && data.warnings.length > 0) {
         setAiWarnings((prev) => [...prev, ...data.warnings])
       }
-
       setAiSuccess(true)
     } catch (error: any) {
       console.error('AI analiz hatası:', error)
-      const detail = error.response?.data?.detail
-        || error.response?.data?.error
-        || error.message
-        || 'AI analiz sırasında bir hata oluştu'
+      const detail = error.response?.data?.detail || error.response?.data?.error || error.message || 'AI analiz sırasında bir hata oluştu'
       setAiError(`Hata: ${detail}`)
     } finally {
       setAiLoading(false)
     }
   }
 
-  // ─── Form Submit ───
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
       setLoading(true)
-
-      // extra_specs olarak teknik özellikleri JSON kaydet
       const extraSpecs: Record<string, any> = {}
       for (const field of activeFields) {
         const val = dynamicFields[field.name]
@@ -304,7 +267,6 @@ export default function NewProductPage() {
       const createResponse = await productsApi.create(data)
       const productId = createResponse.data?.id
 
-      // Resimleri yükle (AI ile eklenen resimler)
       if (productId && aiImages.length > 0) {
         for (const img of aiImages) {
           try {
@@ -325,60 +287,54 @@ export default function NewProductPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-6">
+    <div className="min-h-screen">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
+        <div className="mb-5 sm:mb-6">
           <Link
             href="/products"
-            className="inline-flex items-center text-gray-600 hover:text-gray-900 mb-4"
+            className="inline-flex items-center text-sm text-gray-500 hover:text-gray-900 mb-3 sm:mb-4"
           >
-            <ArrowLeft className="w-4 h-4 mr-2" />
+            <ArrowLeft className="w-4 h-4 mr-1.5" />
             Geri Dön
           </Link>
-          <h1 className="text-3xl font-bold text-gray-900">Yeni Ürün</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Yeni Ürün</h1>
         </div>
 
-        {/* ══════════════════════════════════════════════════
-            AI YARDIMCISI — Fotoğraf + Açıklama → Formu Doldur
-            ══════════════════════════════════════════════════ */}
-        <Card className="mb-6 border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-blue-800">
-                <Sparkles className="w-5 h-5" />
+        {/* AI Assistant */}
+        <Card className="mb-5 sm:mb-6 border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50">
+          <CardHeader className="px-4 sm:px-6">
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="flex items-center gap-2 text-blue-800 text-base sm:text-xl">
+                <Sparkles className="w-5 h-5 flex-shrink-0" />
                 AI ile Hızlı Doldur
               </CardTitle>
               <button
                 type="button"
                 onClick={() => setShowSpecGuide(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors"
-                title="Hangi bilgileri söylemeliyim?"
+                className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] sm:text-xs font-medium text-blue-700 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors flex-shrink-0"
               >
                 <Info className="w-3.5 h-3.5" />
-                Ne söylemeliyim?
+                <span className="hidden sm:inline">Ne söylemeliyim?</span>
+                <span className="sm:hidden">Rehber</span>
               </button>
             </div>
-            <p className="text-sm text-blue-600 mt-1">
+            <p className="text-xs sm:text-sm text-blue-600 mt-1">
               Fotoğraf ekleyin ve ürünü kısaca anlatın, AI formu sizin için doldursun.
             </p>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Fotoğraf Yükleme */}
+          <CardContent className="space-y-4 px-4 sm:px-6">
+            {/* Photos */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
                 Ürün Fotoğrafları
               </label>
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap gap-2.5 sm:gap-3">
                 {aiImagePreviews.map((preview, idx) => (
                   <div
                     key={idx}
-                    className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-blue-200 shadow-sm"
+                    className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden border-2 border-blue-200 shadow-sm"
                   >
-                    <img
-                      src={preview}
-                      alt={`Ürün ${idx + 1}`}
-                      className="w-full h-full object-cover"
-                    />
+                    <img src={preview} alt={`Ürün ${idx + 1}`} className="w-full h-full object-cover" />
                     <button
                       type="button"
                       onClick={() => removeImage(idx)}
@@ -389,50 +345,32 @@ export default function NewProductPage() {
                   </div>
                 ))}
 
-                {/* Galeriden Seç */}
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="w-20 h-20 rounded-xl border-2 border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-400 hover:text-blue-600 hover:border-blue-400 transition-colors"
+                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl border-2 border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-400 hover:text-blue-600 hover:border-blue-400 transition-colors"
                 >
                   <Upload className="w-5 h-5" />
-                  <span className="text-[10px] mt-1">Galeri</span>
+                  <span className="text-[9px] sm:text-[10px] mt-0.5">Galeri</span>
                 </button>
 
-                {/* Kameradan Çek */}
                 <button
                   type="button"
                   onClick={() => cameraInputRef.current?.click()}
-                  className="w-20 h-20 rounded-xl border-2 border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-400 hover:text-blue-600 hover:border-blue-400 transition-colors"
+                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl border-2 border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-400 hover:text-blue-600 hover:border-blue-400 transition-colors"
                 >
                   <Camera className="w-5 h-5" />
-                  <span className="text-[10px] mt-1">Çek</span>
+                  <span className="text-[9px] sm:text-[10px] mt-0.5">Çek</span>
                 </button>
 
-                {/* Galeri input */}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  onChange={handleImageSelect}
-                  className="hidden"
-                />
-                {/* Kamera input */}
-                <input
-                  ref={cameraInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={handleImageSelect}
-                  className="hidden"
-                />
+                <input ref={fileInputRef} type="file" multiple accept="image/*" onChange={handleImageSelect} className="hidden" />
+                <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleImageSelect} className="hidden" />
               </div>
             </div>
 
-            {/* Açıklama + Ses Kayıt */}
+            {/* Description + Voice */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
                 Ürün Açıklaması *
               </label>
               <div className="relative">
@@ -440,12 +378,11 @@ export default function NewProductPage() {
                   value={aiDescription}
                   onChange={(e) => setAiDescription(e.target.value)}
                   placeholder="Yazın veya mikrofona basarak konuşun..."
-                  className={`w-full rounded-xl border px-4 py-2.5 pr-14 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white ${
+                  className={`w-full rounded-xl border px-3 sm:px-4 py-2.5 pr-14 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white text-sm ${
                     isRecording ? 'border-red-400 ring-2 ring-red-200' : 'border-blue-200'
                   }`}
                   rows={3}
                 />
-                {/* Mikrofon Butonu */}
                 <button
                   type="button"
                   onClick={toggleRecording}
@@ -480,33 +417,33 @@ export default function NewProductPage() {
               )}
             </div>
 
-            {/* Hata/Başarı mesajları */}
+            {/* Alerts */}
             {aiError && (
-              <div className="flex items-start gap-2 text-red-600 bg-red-50 px-4 py-3 rounded-xl text-sm">
+              <div className="flex items-start gap-2 text-red-600 bg-red-50 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm">
                 <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                 {aiError}
               </div>
             )}
             {aiSuccess && (
-              <div className="flex items-start gap-2 text-green-700 bg-green-50 px-4 py-3 rounded-xl text-sm">
+              <div className="flex items-start gap-2 text-green-700 bg-green-50 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm">
                 <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                Form başarıyla dolduruldu! Aşağıdaki alanları kontrol edip kaydedin.
+                Form dolduruldu! Kontrol edip kaydedin.
               </div>
             )}
             {aiWarnings.length > 0 && (
-              <div className="text-amber-700 bg-amber-50 px-4 py-3 rounded-xl text-sm space-y-1">
+              <div className="text-amber-700 bg-amber-50 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm space-y-1">
                 {aiWarnings.map((w, i) => (
                   <p key={i}>⚠ {w}</p>
                 ))}
               </div>
             )}
 
-            {/* AI Buton */}
+            {/* AI Button */}
             <button
               type="button"
               onClick={handleAiFill}
               disabled={aiLoading || !aiDescription.trim()}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors"
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 active:bg-blue-800 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors text-sm"
             >
               {aiLoading ? (
                 <>
@@ -523,126 +460,95 @@ export default function NewProductPage() {
           </CardContent>
         </Card>
 
-        {/* ══════════════════════════════════════════════════
-            ÜRÜN FORMU — Manuel veya AI tarafından doldurulur
-            ══════════════════════════════════════════════════ */}
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Kategori ve Ürün Çeşidi */}
+        {/* Product Form */}
+        <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+          {/* Category & Type */}
           <Card>
-            <CardHeader>
-              <CardTitle>Kategori ve Çeşit</CardTitle>
+            <CardHeader className="px-4 sm:px-6">
+              <CardTitle className="text-base sm:text-xl">Kategori ve Çeşit</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3 sm:space-y-4 px-4 sm:px-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Kategori *
-                </label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Kategori *</label>
                 <select
                   required
                   value={formData.category_id}
                   onChange={(e) => {
-                    const value = e.target.value
-                    setFormData({ ...formData, category_id: value, name: '' })
+                    setFormData({ ...formData, category_id: e.target.value, name: '' })
                     setSelectedProductType('')
                     setDynamicFields({})
                   }}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                 >
                   <option value="">Kategori Seçiniz</option>
                   {categories.map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
                   ))}
                 </select>
               </div>
 
-              {formData.category_id && template && (
+              {formData.category_id && categoryProductTypes.length > 0 && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Ürün Çeşidi *
-                  </label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Ürün Çeşidi *</label>
                   <select
                     required
                     value={selectedProductType}
                     onChange={(e) => {
                       const value = e.target.value
                       setSelectedProductType(value)
-                      const selectedType = template.types.find((t) => t.value === value)
-                      setFormData((prev) => ({
-                        ...prev,
-                        name: selectedType ? selectedType.label : '',
-                      }))
+                      const selectedType = categoryProductTypes.find((t) => t.value === value)
+                      setFormData((prev) => ({ ...prev, name: selectedType ? selectedType.label : '' }))
                       setDynamicFields({})
                     }}
-                    className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   >
                     <option value="">Ürün Çeşidi Seçiniz</option>
-                    {template.types.map((t) => (
-                      <option key={t.value} value={t.value}>
-                        {t.label}
-                      </option>
+                    {categoryProductTypes.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
                     ))}
                   </select>
                 </div>
               )}
 
-              {/* Eğer kategori template'de yoksa serbest isim girişi */}
-              {formData.category_id && !template && (
+              {formData.category_id && categoryProductTypes.length === 0 && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Ürün Adı *
-                  </label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Ürün Adı *</label>
                   <input
                     type="text"
                     required
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     placeholder="Ürün adını yazınız"
-                    className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   />
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Teknik Özellikler - sadece ürün çeşidi seçildiyse göster */}
+          {/* Technical Specs */}
           {activeFields.length > 0 && (
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <span>Teknik Özellikler</span>
-                  <span className="text-sm font-normal text-gray-500">
-                    (Alıcı için önemli bilgiler)
-                  </span>
-                </CardTitle>
+              <CardHeader className="px-4 sm:px-6">
+                <CardTitle className="text-base sm:text-xl">Teknik Özellikler</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <CardContent className="px-4 sm:px-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   {activeFields.map((field) => (
                     <div key={field.name}>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
                         {field.label}
-                        {field.unit && (
-                          <span className="text-gray-400 ml-1">({field.unit})</span>
-                        )}
+                        {field.unit && <span className="text-gray-400 ml-1">({field.unit})</span>}
                       </label>
                       {field.type === 'select' ? (
                         <select
                           value={dynamicFields[field.name] || ''}
-                          onChange={(e) =>
-                            setDynamicFields((prev) => ({
-                              ...prev,
-                              [field.name]: e.target.value,
-                            }))
-                          }
-                          className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                          onChange={(e) => setDynamicFields((prev) => ({ ...prev, [field.name]: e.target.value }))}
+                          className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                         >
                           <option value="">Seçiniz</option>
-                          {field.options?.map((opt) => (
-                            <option key={opt} value={opt}>
-                              {opt}
-                            </option>
+                          {field.options?.map((opt: string) => (
+                            <option key={opt} value={opt}>{opt}</option>
                           ))}
                         </select>
                       ) : (
@@ -651,13 +557,8 @@ export default function NewProductPage() {
                           step={field.type === 'number' ? 'any' : undefined}
                           value={dynamicFields[field.name] || ''}
                           placeholder={field.placeholder || ''}
-                          onChange={(e) =>
-                            setDynamicFields((prev) => ({
-                              ...prev,
-                              [field.name]: e.target.value,
-                            }))
-                          }
-                          className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                          onChange={(e) => setDynamicFields((prev) => ({ ...prev, [field.name]: e.target.value }))}
+                          className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                         />
                       )}
                     </div>
@@ -667,70 +568,54 @@ export default function NewProductPage() {
             </Card>
           )}
 
-          {/* Fiyat Bilgileri */}
+          {/* Pricing */}
           <Card>
-            <CardHeader>
-              <CardTitle>Fiyat Bilgileri</CardTitle>
+            <CardHeader className="px-4 sm:px-6">
+              <CardTitle className="text-base sm:text-xl">Fiyat Bilgileri</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <CardContent className="space-y-3 sm:space-y-4 px-4 sm:px-6">
+              <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Alış Fiyatı (₺) *
-                  </label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Alış (₺) *</label>
                   <input
                     type="number"
                     step="0.01"
                     required
                     value={formData.purchase_price}
-                    onChange={(e) =>
-                      setFormData({ ...formData, purchase_price: e.target.value })
-                    }
-                    className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    onChange={(e) => setFormData({ ...formData, purchase_price: e.target.value })}
+                    className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Satış Fiyatı (₺) *
-                  </label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Satış (₺) *</label>
                   <input
                     type="number"
                     step="0.01"
                     required
                     value={formData.sale_price}
-                    onChange={(e) =>
-                      setFormData({ ...formData, sale_price: e.target.value })
-                    }
-                    className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    onChange={(e) => setFormData({ ...formData, sale_price: e.target.value })}
+                    className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Pazarlık Payı
-                  </label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Pazarlık Payı</label>
                   <input
                     type="number"
                     step="0.01"
                     value={formData.negotiation_margin}
-                    onChange={(e) =>
-                      setFormData({ ...formData, negotiation_margin: e.target.value })
-                    }
-                    className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    onChange={(e) => setFormData({ ...formData, negotiation_margin: e.target.value })}
+                    className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Pazarlık Tipi
-                  </label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Pazarlık Tipi</label>
                   <select
                     value={formData.negotiation_type}
-                    onChange={(e) =>
-                      setFormData({ ...formData, negotiation_type: e.target.value })
-                    }
-                    className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    onChange={(e) => setFormData({ ...formData, negotiation_type: e.target.value })}
+                    className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   >
                     <option value="amount">Tutar (₺)</option>
                     <option value="percentage">Yüzde (%)</option>
@@ -740,38 +625,30 @@ export default function NewProductPage() {
             </CardContent>
           </Card>
 
-          {/* Diğer Bilgiler */}
+          {/* Other Info */}
           <Card>
-            <CardHeader>
-              <CardTitle>Diğer Bilgiler</CardTitle>
+            <CardHeader className="px-4 sm:px-6">
+              <CardTitle className="text-base sm:text-xl">Diğer Bilgiler</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3 sm:space-y-4 px-4 sm:px-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Malzeme
-                </label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Malzeme</label>
                 <input
                   type="text"
                   value={formData.material}
-                  onChange={(e) =>
-                    setFormData({ ...formData, material: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, material: e.target.value })}
                   placeholder="Bakır, çelik, demir, alüminyum vs."
-                  className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Durum
-                  </label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Durum</label>
                   <select
                     value={formData.status}
-                    onChange={(e) =>
-                      setFormData({ ...formData, status: e.target.value })
-                    }
-                    className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                    className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   >
                     <option value="working">Çalışıyor</option>
                     <option value="broken">Arızalı</option>
@@ -779,15 +656,11 @@ export default function NewProductPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Stok Durumu
-                  </label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Stok Durumu</label>
                   <select
                     value={formData.stock_status}
-                    onChange={(e) =>
-                      setFormData({ ...formData, stock_status: e.target.value })
-                    }
-                    className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    onChange={(e) => setFormData({ ...formData, stock_status: e.target.value })}
+                    className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   >
                     <option value="available">Mevcut</option>
                     <option value="sold">Satıldı</option>
@@ -797,54 +670,43 @@ export default function NewProductPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Notlar
-                </label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Notlar</label>
                 <textarea
                   value={formData.notes}
-                  onChange={(e) =>
-                    setFormData({ ...formData, notes: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   placeholder="Ek notlar..."
-                  className="w-full rounded-xl border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  className="w-full rounded-xl border border-gray-300 px-3 sm:px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                   rows={3}
                 />
               </div>
             </CardContent>
           </Card>
 
-          {/* Kaydet Butonları */}
-          <div className="flex gap-4">
-            <Button type="submit" disabled={loading}>
+          {/* Submit */}
+          <div className="flex gap-3">
+            <Button type="submit" disabled={loading} className="flex-1 sm:flex-none">
               {loading ? 'Kaydediliyor...' : 'Kaydet'}
             </Button>
-            <Link href="/products">
-              <Button type="button" variant="outline">
-                İptal
-              </Button>
+            <Link href="/products" className="flex-1 sm:flex-none">
+              <Button type="button" variant="outline" className="w-full">İptal</Button>
             </Link>
           </div>
         </form>
       </div>
 
-      {/* ══════════════════════════════════════════════════
-          TEKNİK BİLGİ REHBERİ — Bottom Sheet
-          ══════════════════════════════════════════════════ */}
+      {/* Spec Guide Bottom Sheet */}
       {showSpecGuide && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-          {/* Backdrop */}
           <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
             onClick={() => { setShowSpecGuide(false); setExpandedGuideCategory(null) }}
           />
-
-          {/* Sheet */}
           <div className="relative w-full sm:max-w-lg bg-white rounded-t-2xl sm:rounded-2xl max-h-[80vh] flex flex-col animate-slide-up shadow-2xl">
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mt-3 sm:hidden" />
+            <div className="flex items-center justify-between px-4 sm:px-5 py-3 sm:py-4 border-b border-gray-100">
               <div>
-                <h3 className="text-base font-semibold text-gray-900">Sesle Ne Söylemeliyim?</h3>
-                <p className="text-xs text-gray-500 mt-0.5">Kategoriye göre istenen bilgiler</p>
+                <h3 className="text-sm sm:text-base font-semibold text-gray-900">Sesle Ne Söylemeliyim?</h3>
+                <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5">Kategoriye göre istenen bilgiler</p>
               </div>
               <button
                 type="button"
@@ -855,30 +717,28 @@ export default function NewProductPage() {
               </button>
             </div>
 
-            {/* Genel bilgi */}
-            <div className="px-5 py-3 bg-amber-50 border-b border-amber-100">
-              <p className="text-xs text-amber-800">
-                <strong>Her ürün için:</strong> boyutlar (en-boy-yükseklik), marka, malzeme, durum (çalışıyor/arızalı) ve fiyat bilgisi söyleyin.
+            <div className="px-4 sm:px-5 py-2.5 sm:py-3 bg-amber-50 border-b border-amber-100">
+              <p className="text-[10px] sm:text-xs text-amber-800">
+                <strong>Her ürün için:</strong> boyutlar, marka, malzeme, durum ve fiyat bilgisi söyleyin.
               </p>
             </div>
 
-            {/* Kategori Listesi */}
-            <div className="overflow-y-auto flex-1 px-3 py-2">
-              {Object.entries(CATEGORY_TEMPLATES).map(([catName, catTemplate]) => {
-                const isExpanded = expandedGuideCategory === catName
-                const hasTypeSpecificFields = catTemplate.types.some(t => t.fields && t.fields.length > 0)
+            <div className="overflow-y-auto flex-1 px-2 sm:px-3 py-2">
+              {categories.filter((c: any) => c.product_types && c.product_types.length > 0).map((cat: any) => {
+                const isExpanded = expandedGuideCategory === cat.name
+                const catDefFields: any[] = cat.default_fields || []
 
                 return (
-                  <div key={catName} className="border-b border-gray-50 last:border-0">
+                  <div key={cat.id} className="border-b border-gray-50 last:border-0">
                     <button
                       type="button"
-                      onClick={() => setExpandedGuideCategory(isExpanded ? null : catName)}
+                      onClick={() => setExpandedGuideCategory(isExpanded ? null : cat.name)}
                       className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-gray-50 rounded-lg transition-colors"
                     >
-                      <span className="text-sm font-medium text-gray-800">{catName}</span>
+                      <span className="text-xs sm:text-sm font-medium text-gray-800">{cat.name}</span>
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] text-gray-400">
-                          {catTemplate.types.length} çeşit
+                          {cat.product_types.length} çeşit
                         </span>
                         {isExpanded ? (
                           <ChevronUp className="w-4 h-4 text-gray-400" />
@@ -889,63 +749,26 @@ export default function NewProductPage() {
                     </button>
 
                     {isExpanded && (
-                      <div className="px-3 pb-3 space-y-3">
-                        {hasTypeSpecificFields ? (
-                          // Ürün çeşidi bazlı gösterim
-                          catTemplate.types.map((pType) => {
-                            const fields = pType.fields && pType.fields.length > 0
-                              ? pType.fields
-                              : catTemplate.fields
-                            return (
-                              <div key={pType.value}>
-                                <p className="text-xs font-semibold text-gray-600 mb-1.5">{pType.label}</p>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {fields.map((field) => (
-                                    <span
-                                      key={field.name}
-                                      className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] bg-blue-50 text-blue-700 rounded-md"
-                                    >
-                                      {field.label}
-                                      {field.unit && (
-                                        <span className="text-blue-400">({field.unit})</span>
-                                      )}
-                                      {field.type === 'select' && field.options && (
-                                        <span className="text-blue-400">
-                                          → {field.options.join(' / ')}
-                                        </span>
-                                      )}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            )
-                          })
-                        ) : (
-                          // Tüm çeşitler aynı alanları paylaşıyor
-                          <>
-                            <div className="flex flex-wrap gap-1.5">
-                              {catTemplate.fields.map((field) => (
-                                <span
-                                  key={field.name}
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] bg-blue-50 text-blue-700 rounded-md"
-                                >
-                                  {field.label}
-                                  {field.unit && (
-                                    <span className="text-blue-400">({field.unit})</span>
-                                  )}
-                                  {field.type === 'select' && field.options && (
-                                    <span className="text-blue-400">
-                                      → {field.options.join(' / ')}
-                                    </span>
-                                  )}
-                                </span>
-                              ))}
-                            </div>
-                            <p className="text-[11px] text-gray-400">
-                              Çeşitler: {catTemplate.types.map(t => t.label).join(', ')}
-                            </p>
-                          </>
+                      <div className="px-3 pb-3 space-y-2 sm:space-y-3">
+                        {catDefFields.length > 0 && (
+                          <div className="flex flex-wrap gap-1 sm:gap-1.5">
+                            {catDefFields.map((field: any) => (
+                              <span
+                                key={field.name}
+                                className="inline-flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-[11px] bg-blue-50 text-blue-700 rounded-md"
+                              >
+                                {field.label}
+                                {field.unit && <span className="text-blue-400">({field.unit})</span>}
+                                {field.type === 'select' && field.options && (
+                                  <span className="text-blue-400">→ {field.options.join(' / ')}</span>
+                                )}
+                              </span>
+                            ))}
+                          </div>
                         )}
+                        <p className="text-[10px] sm:text-[11px] text-gray-400">
+                          Çeşitler: {cat.product_types.map((t: any) => t.label).join(', ')}
+                        </p>
                       </div>
                     )}
                   </div>

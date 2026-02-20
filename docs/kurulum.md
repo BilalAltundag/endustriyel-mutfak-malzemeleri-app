@@ -12,16 +12,39 @@ Proje **frontend** (Next.js) ve **backend** (FastAPI + MongoDB) olmak üzere iki
 
 ---
 
-## 1. Backend Kurulumu
+## 1. Environment Değişkenleri
 
-```powershell
+`backend/.env.example` dosyasını `backend/.env` olarak kopyalayıp kendi bilgilerinizi girin:
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+Gerekli servisler (hepsinin ücretsiz planı var):
+
+| Servis | Amaç | API Key Alma |
+|--------|------|-------------|
+| MongoDB Atlas | Veritabanı | [cloud.mongodb.com](https://cloud.mongodb.com) |
+| Cloudinary | Görsel depolama | [cloudinary.com](https://cloudinary.com/users/register_free) |
+| Google AI Studio | AI ürün analizi | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| Groq | Ses çevirme | [console.groq.com/keys](https://console.groq.com/keys) |
+| LangSmith | AI izleme (opsiyonel) | [smith.langchain.com](https://smith.langchain.com) |
+
+---
+
+## 2. Backend Kurulumu
+
+```bash
 cd backend
 
 # Sanal ortam oluştur (ilk kez)
 python -m venv venv
 
 # Sanal ortamı aktifleştir
+# Windows:
 .\venv\Scripts\Activate.ps1
+# macOS / Linux:
+source venv/bin/activate
 
 # Bağımlılıkları yükle
 pip install -r requirements.txt
@@ -29,9 +52,9 @@ pip install -r requirements.txt
 
 ### Backend'i Başlatma
 
-```powershell
+```bash
 cd backend
-.\venv\Scripts\Activate.ps1
+.\venv\Scripts\Activate.ps1   # veya source venv/bin/activate
 python main.py
 ```
 
@@ -40,9 +63,9 @@ python main.py
 
 ---
 
-## 2. Frontend Kurulumu
+## 3. Frontend Kurulumu
 
-```powershell
+```bash
 cd frontend
 
 # Bağımlılıkları yükle (ilk kez)
@@ -56,33 +79,9 @@ npm run dev
 
 ---
 
-## 3. Environment Değişkenleri
+## 4. Hızlı Başlatma (Windows)
 
-`backend/.env` dosyasını oluşturun:
-
-```env
-# MongoDB
-MONGODB_URI=mongodb+srv://...
-MONGODB_DB_NAME=ayhanticaret
-
-# Google Gemini (AI Ürün Analizi)
-GOOGLE_API_KEY=your_key
-GOOGLE_MODEL=gemini-2.5-flash
-GOOGLE_MODEL_FALLBACK=gemini-2.0-flash
-
-# Groq (Ses Çevirme)
-GROQ_API_KEY=your_key
-
-# LangSmith (Opsiyonel - AI tracing)
-LANGSMITH_API_KEY=your_key
-LANGSMITH_PROJECT=ayhanticaret
-```
-
----
-
-## 4. Hızlı Başlatma (start.bat)
-
-Windows'ta her iki servisi tek seferde başlatmak için:
+Her iki servisi tek seferde başlatmak için:
 
 ```powershell
 start.bat
@@ -94,17 +93,17 @@ Bu script backend ve frontend'i ayrı cmd pencerelerinde başlatır ve tarayıc�
 
 ## 5. Ngrok ile Dış Erişim (Opsiyonel)
 
-Uygulamayı dışarıdan erişime açmak için ngrok kullanılabilir:
+Uygulamayı dışarıdan (telefon, tablet vb.) erişime açmak için [ngrok](https://ngrok.com) kullanılabilir:
 
-```powershell
+```bash
 # Backend için (ayrı terminalde)
-ngrok start --config ngrok-backend.yml backend
+ngrok http 8000
 
 # Frontend için (ayrı terminalde)
-ngrok start --config ngrok-frontend.yml frontend
+ngrok http 3000
 ```
 
-> ngrok yml dosyaları kendi auth token'ınızı içermelidir. Bu dosyalar `.gitignore`'da olduğu için repo'ya dahil edilmez.
+Ngrok yml dosyası kullanmak isterseniz, proje kökünde `ngrok-backend.yml` ve `ngrok-frontend.yml` oluşturabilirsiniz. Bu dosyalar `.gitignore`'da olduğu için repo'ya dahil edilmez.
 
 ---
 
@@ -113,10 +112,11 @@ ngrok start --config ngrok-frontend.yml frontend
 | Sorun | Çözüm |
 |-------|-------|
 | `ModuleNotFoundError` | `pip install -r requirements.txt` tekrar çalıştırın |
-| npm access token hatası | `npm logout && npm cache clean --force && npm install` |
+| npm hatası | `npm cache clean --force && npm install` |
 | CORS hatası | Backend ve frontend'in aynı anda çalıştığından emin olun |
 | AI analiz 429 hatası | Rate limit aşıldı, birkaç dakika bekleyin (otomatik retry var) |
 | MongoDB bağlantı hatası | `.env` dosyasındaki `MONGODB_URI` değerini kontrol edin |
+| `MONGODB_URI environment variable is required` | `backend/.env` dosyası oluşturulmamış, `.env.example`'dan kopyalayın |
 
 ---
 

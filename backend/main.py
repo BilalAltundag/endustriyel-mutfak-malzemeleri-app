@@ -35,12 +35,19 @@ class MongoJSONResponse(JSONResponse):
 logging.basicConfig(level=logging.INFO, format="%(name)s - %(levelname)s - %(message)s")
 
 from database import init_db
-from api import products, categories, inventory, finance, calendar, notes, price_ranges, suppliers, ai_agent
+from api import products, categories, inventory, finance, calendar, notes, price_ranges, suppliers, ai_agent, price_scraper, marketplace_search
+from api.categories import seed_product_types as _seed_pt
 
 app = FastAPI(title="Endüstriyel Mutfak Yönetim Sistemi", default_response_class=MongoJSONResponse)
 
 # MongoDB index'leri oluştur
 init_db()
+
+# Mevcut kategorilere product_types ekle (henüz yoksa)
+try:
+    _seed_pt()
+except Exception as e:
+    logging.warning(f"Product types seed skipped: {e}")
 
 # CORS middleware - must be added before routes
 app.add_middleware(
@@ -62,6 +69,8 @@ app.include_router(notes.router, prefix="/api/notes", tags=["notes"])
 app.include_router(price_ranges.router, prefix="/api/price-ranges", tags=["price-ranges"])
 app.include_router(suppliers.router, prefix="/api/suppliers", tags=["suppliers"])
 app.include_router(ai_agent.router, prefix="/api/ai", tags=["ai-agent"])
+app.include_router(price_scraper.router, prefix="/api/price-scraper", tags=["price-scraper"])
+app.include_router(marketplace_search.router, prefix="/api/marketplace-search", tags=["marketplace-search"])
 
 # Global exception handler to ensure CORS headers are always included
 @app.exception_handler(Exception)

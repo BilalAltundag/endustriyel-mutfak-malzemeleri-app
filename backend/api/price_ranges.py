@@ -12,6 +12,8 @@ router = APIRouter()
 def get_price_ranges(
     product_id: Optional[int] = None,
     category_id: Optional[int] = None,
+    skip: int = 0,
+    limit: int = 200,
 ):
     query = {}
     if product_id:
@@ -19,7 +21,7 @@ def get_price_ranges(
     if category_id:
         query["category_id"] = category_id
 
-    docs = price_ranges_col.find(query)
+    docs = price_ranges_col.find(query).skip(skip).limit(limit)
     return [doc_to_dict(d) for d in docs]
 
 

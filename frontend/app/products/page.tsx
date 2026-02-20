@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState, useMemo } from 'react'
 import Link from 'next/link'
-import { Plus, Edit, Trash2, Image as ImageIcon, ShoppingCart, X } from 'lucide-react'
-import { productsApi, categoriesApi } from '@/lib/api'
+import { Plus, Edit, Trash2, Image as ImageIcon, ShoppingCart, X, ArrowRight, Filter, TrendingUp } from 'lucide-react'
+import { productsApi } from '@/lib/api'
+import { useProducts, useCategories, useInvalidate, useAiPriceResults } from '@/lib/hooks'
 import Button from '@/components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 
@@ -85,51 +86,50 @@ function getImageUrl(path: string): string {
 }
 
 export default function ProductsPage() {
-  const [products, setProducts] = useState<Product[]>([])
-  const [categories, setCategories] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState({ category_id: '', stock_status: '', status: '' })
+  const [showFilters, setShowFilters] = useState(false)
 
-  // Satış modal state
   const [sellModalProduct, setSellModalProduct] = useState<Product | null>(null)
   const [sellPrice, setSellPrice] = useState('')
   const [sellLoading, setSellLoading] = useState(false)
 
-  useEffect(() => {
-    fetchProducts()
-    fetchCategories()
+  const invalidate = useInvalidate()
+
+  const params = useMemo(() => {
+    const p: any = {}
+    if (filter.category_id) p.category_id = parseInt(filter.category_id)
+    if (filter.stock_status) p.stock_status = filter.stock_status
+    if (filter.status) p.status = filter.status
+    return p
   }, [filter])
 
-  const fetchProducts = async () => {
-    try {
-      setLoading(true)
-      const params: any = {}
-      if (filter.category_id) params.category_id = parseInt(filter.category_id)
-      if (filter.stock_status) params.stock_status = filter.stock_status
-      if (filter.status) params.status = filter.status
-      const response = await productsApi.getAll(params)
-      setProducts(response.data)
-    } catch (error: any) {
-      console.error('Error fetching products:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const { data: allProducts = [], isLoading: loading } = useProducts(params)
+  const { data: categories = [] } = useCategories(true)
+  const { data: aiPriceResults = [] } = useAiPriceResults()
 
-  const fetchCategories = async () => {
-    try {
-      const response = await categoriesApi.getAll(true)
-      setCategories(response.data)
-    } catch (error: any) {
-      console.error('Error fetching categories:', error)
+  const priceResultMap = useMemo(() => {
+    const map: Record<string, any> = {}
+    for (const r of aiPriceResults as any[]) {
+      map[`${r.category_id}::${r.product_type}`] = r
     }
-  }
+    return map
+  }, [aiPriceResults])
+
+  const products = useMemo(
+    () => (allProducts as Product[]).filter((p) => p.stock_status !== 'sold'),
+    [allProducts]
+  )
+  const soldCount = useMemo(
+    () => (allProducts as Product[]).filter((p) => p.stock_status === 'sold').length,
+    [allProducts]
+  )
 
   const handleDelete = async (id: number) => {
     if (!confirm('Bu ürünü silmek istediğinize emin misiniz?')) return
     try {
       await productsApi.delete(id)
-      fetchProducts()
+      invalidate.products()
+      invalidate.inventory()
     } catch (error) {
       console.error('Error deleting product:', error)
       alert('Ürün silinirken bir hata oluştu')
@@ -149,7 +149,8 @@ export default function ProductsPage() {
       await productsApi.sell(sellModalProduct.id, price)
       setSellModalProduct(null)
       setSellPrice('')
-      fetchProducts()
+      invalidate.products()
+      invalidate.inventory()
     } catch (error: any) {
       console.error('Error selling product:', error)
       alert(error.response?.data?.detail || 'Satış işlemi sırasında hata oluştu')
@@ -176,68 +177,106 @@ export default function ProductsPage() {
     }
   }
 
+  const hasActiveFilter = filter.category_id || filter.stock_status || filter.status
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Ürünler</h1>
-            <p className="text-gray-600">Ürün yönetimi ve stok takibi</p>
+    <div className="min-h-screen">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-5 sm:mb-8">
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Ürünler</h1>
+            <p className="text-sm text-gray-500 mt-0.5 hidden sm:block">Ürün yönetimi ve stok takibi</p>
           </div>
-          <Link href="/products/new">
-            <Button>
-              <Plus className="w-4 h-4 mr-2" />
-              Yeni Ürün
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`md:hidden flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+                hasActiveFilter
+                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                  : 'bg-white text-gray-600 border border-gray-200'
+              }`}
+            >
+              <Filter className="w-4 h-4" />
+              Filtre
+            </button>
+            <Link href="/products/new">
+              <Button>
+                <Plus className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Yeni Ürün</span>
+              </Button>
+            </Link>
+          </div>
         </div>
 
-        {/* Filters */}
-        <Card className="mb-6">
-          <CardContent className="pt-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Kategori</label>
-                <select
-                  value={filter.category_id}
-                  onChange={(e) => setFilter({ ...filter, category_id: e.target.value })}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-2"
-                >
-                  <option value="">Tümü</option>
-                  {categories.map((cat) => (
-                    <option key={cat.id} value={cat.id}>{cat.name}</option>
-                  ))}
-                </select>
+        {/* Filters - always visible on desktop, toggle on mobile */}
+        <div className={`${showFilters ? 'block' : 'hidden'} md:block mb-4 sm:mb-6`}>
+          <Card>
+            <CardContent className="pt-4 sm:pt-6 pb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Kategori</label>
+                  <select
+                    value={filter.category_id}
+                    onChange={(e) => setFilter({ ...filter, category_id: e.target.value })}
+                    className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    <option value="">Tümü</option>
+                    {categories.map((cat: any) => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Stok Durumu</label>
+                  <select
+                    value={filter.stock_status}
+                    onChange={(e) => setFilter({ ...filter, stock_status: e.target.value })}
+                    className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    <option value="">Tümü</option>
+                    <option value="available">Mevcut</option>
+                    <option value="reserved">Rezerve</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">Durum</label>
+                  <select
+                    value={filter.status}
+                    onChange={(e) => setFilter({ ...filter, status: e.target.value })}
+                    className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    <option value="">Tümü</option>
+                    <option value="working">Çalışıyor</option>
+                    <option value="broken">Arızalı</option>
+                    <option value="repair">Tamirde</option>
+                  </select>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Stok Durumu</label>
-                <select
-                  value={filter.stock_status}
-                  onChange={(e) => setFilter({ ...filter, stock_status: e.target.value })}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-2"
-                >
-                  <option value="">Tümü</option>
-                  <option value="available">Mevcut</option>
-                  <option value="sold">Satıldı</option>
-                  <option value="reserved">Rezerve</option>
-                </select>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Sold Products Banner */}
+        {soldCount > 0 && (
+          <Link href="/inventory?tab=sold">
+            <div className="mb-4 sm:mb-6 flex items-center justify-between bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-2xl px-4 sm:px-5 py-3 sm:py-4 hover:shadow-md transition-all group">
+              <div className="flex items-center gap-2.5 sm:gap-3">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 bg-orange-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600" />
+                </div>
+                <div className="min-w-0">
+                  <span className="font-semibold text-orange-800 text-sm sm:text-base">{soldCount} ürün satıldı</span>
+                  <p className="text-[10px] sm:text-xs text-orange-600 mt-0.5 hidden sm:block">Satılan ürünleri envanter sayfasından görüntüleyebilirsiniz</p>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Durum</label>
-                <select
-                  value={filter.status}
-                  onChange={(e) => setFilter({ ...filter, status: e.target.value })}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-2"
-                >
-                  <option value="">Tümü</option>
-                  <option value="working">Çalışıyor</option>
-                  <option value="broken">Arızalı</option>
-                  <option value="repair">Tamirde</option>
-                </select>
+              <div className="flex items-center gap-1 text-orange-600 font-medium text-xs sm:text-sm group-hover:gap-2 transition-all flex-shrink-0">
+                <span className="hidden sm:inline">Satılanları Gör</span>
+                <ArrowRight className="w-4 h-4" />
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </Link>
+        )}
 
         {/* Products Grid */}
         {loading ? (
@@ -247,104 +286,154 @@ export default function ProductsPage() {
             <CardContent className="py-12 text-center text-gray-500">Henüz ürün eklenmemiş</CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
             {products.map((product) => (
-              <Card key={product.id} className={product.stock_status === 'sold' ? 'opacity-70' : ''}>
-                <CardHeader>
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="flex-1">
-                      <CardTitle>{product.name}</CardTitle>
+              <Card key={product.id} className="overflow-hidden">
+                {/* Image */}
+                {product.images && product.images.length > 0 ? (
+                  <div className="w-full aspect-[4/3] bg-gray-100 overflow-hidden">
+                    <img
+                      src={getImageUrl(product.images[0])}
+                      alt={product.name}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  </div>
+                ) : (
+                  <div className="w-full aspect-[4/3] bg-gray-50 flex items-center justify-center">
+                    <ImageIcon className="w-10 h-10 text-gray-300" />
+                  </div>
+                )}
+
+                <div className="p-4 sm:p-5">
+                  {/* Title + Actions */}
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-base font-semibold text-gray-900 truncate">{product.name}</h3>
                       {product.category && (
-                        <p className="text-sm text-gray-500 mt-1">{product.category.name}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{product.category.name}</p>
                       )}
                     </div>
-                    <div className="flex gap-1">
+                    <div className="flex gap-0.5 -mr-1 flex-shrink-0">
                       <Link href={`/products/${product.id}/edit`}>
                         <Button variant="ghost" size="sm"><Edit className="w-4 h-4" /></Button>
                       </Link>
                       <Button variant="ghost" size="sm" onClick={() => handleDelete(product.id)}>
-                        <Trash2 className="w-4 h-4 text-red-600" />
+                        <Trash2 className="w-4 h-4 text-red-500" />
                       </Button>
                     </div>
                   </div>
-                  {product.images && product.images.length > 0 ? (
-                    <div className="w-full h-48 bg-gray-100 rounded-xl mb-4 overflow-hidden">
-                      <img
-                        src={getImageUrl(product.images[0])}
-                        alt={product.name}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  ) : (
-                    <div className="w-full h-48 bg-gray-100 rounded-xl mb-4 flex items-center justify-center">
-                      <ImageIcon className="w-12 h-12 text-gray-400" />
+
+                  {/* Specs */}
+                  {product.extra_specs && Object.keys(product.extra_specs).length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-3">
+                      {getKeySpecs(product.extra_specs).map((spec, idx) => (
+                        <span key={idx} className="inline-block bg-gray-100 text-gray-600 text-[11px] px-2 py-0.5 rounded-md">
+                          {spec}
+                        </span>
+                      ))}
                     </div>
                   )}
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {product.extra_specs && Object.keys(product.extra_specs).length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {getKeySpecs(product.extra_specs).map((spec, idx) => (
-                          <span key={idx} className="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-1 rounded-lg">
-                            {spec}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Alış:</span>
-                      <span className="font-semibold">{product.purchase_price.toLocaleString('tr-TR')} ₺</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Satış:</span>
-                      <span className="font-semibold text-blue-600">{product.sale_price.toLocaleString('tr-TR')} ₺</span>
-                    </div>
-                    {product.material && (
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-600">Malzeme:</span>
-                        <span className="text-sm">{product.material}</span>
-                      </div>
-                    )}
-                    <div className="flex gap-2 flex-wrap">
-                      <span className={`px-2 py-1 rounded-lg text-xs font-medium ${getStatusColor(product.status)}`}>
-                        {product.status === 'working' ? 'Çalışıyor' : product.status === 'broken' ? 'Arızalı' : 'Tamirde'}
-                      </span>
-                      <span className={`px-2 py-1 rounded-lg text-xs font-medium ${getStockStatusColor(product.stock_status)}`}>
-                        {product.stock_status === 'available' ? 'Mevcut' : product.stock_status === 'sold' ? 'Satıldı' : 'Rezerve'}
-                      </span>
-                    </div>
 
-                    {/* Satıldı Butonu */}
-                    {product.stock_status === 'available' && (
-                      <button
-                        onClick={() => {
-                          setSellModalProduct(product)
-                          setSellPrice(String(product.sale_price))
-                        }}
-                        className="w-full mt-2 flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-medium py-2.5 rounded-xl transition-colors"
-                      >
-                        <ShoppingCart className="w-4 h-4" />
-                        Satıldı
-                      </button>
-                    )}
+                  {/* Prices */}
+                  <div className="flex items-center justify-between text-sm mb-2">
+                    <div>
+                      <span className="text-gray-400 text-xs">Alış</span>
+                      <div className="font-semibold text-gray-700">{product.purchase_price.toLocaleString('tr-TR')} ₺</div>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-gray-400 text-xs">Satış</span>
+                      <div className="font-semibold text-blue-600">{product.sale_price.toLocaleString('tr-TR')} ₺</div>
+                    </div>
                   </div>
-                </CardContent>
+
+                  {/* AI Price Range */}
+                  {(() => {
+                    const key = `${product.category_id}::${product.product_type}`
+                    const ai = priceResultMap[key]
+                    if (!ai || ai.min_price == null) return null
+                    const timePeriodLabel: Record<string, string> = {
+                      '24_hours': 'Son 24 Saat',
+                      '7_days': 'Son 7 Gün',
+                      '30_days': 'Son 30 Gün',
+                    }
+                    return (
+                      <div className="bg-gradient-to-r from-violet-50 to-indigo-50 border border-violet-200/60 rounded-xl px-3 py-2.5 mb-2">
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <TrendingUp className="w-3.5 h-3.5 text-violet-600" />
+                          <span className="text-[11px] font-semibold text-violet-700">Piyasa Fiyatı</span>
+                          <span className="text-[10px] text-violet-500 ml-auto">
+                            {ai.location} · {timePeriodLabel[ai.time_period] || ai.time_period}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs">
+                          <div>
+                            <span className="text-violet-500">Min</span>
+                            <span className="font-semibold text-violet-800 ml-1">{ai.min_price.toLocaleString('tr-TR')} ₺</span>
+                          </div>
+                          <span className="text-violet-300">—</span>
+                          <div>
+                            <span className="text-violet-500">Max</span>
+                            <span className="font-semibold text-violet-800 ml-1">{ai.max_price.toLocaleString('tr-TR')} ₺</span>
+                          </div>
+                        </div>
+                        {ai.cluster_avg_price != null && (
+                          <div className="mt-1.5 pt-1.5 border-t border-violet-200/50 text-xs flex items-center justify-between">
+                            <span className="text-violet-500">Yakın Ort.</span>
+                            <span className="font-bold text-violet-700">{ai.cluster_avg_price.toLocaleString('tr-TR')} ₺</span>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
+
+                  {/* Material */}
+                  {product.material && (
+                    <div className="text-xs text-gray-500 mb-2">
+                      Malzeme: {product.material}
+                    </div>
+                  )}
+
+                  {/* Status badges */}
+                  <div className="flex gap-1.5 flex-wrap mb-3">
+                    <span className={`px-2 py-0.5 rounded-md text-[11px] font-medium ${getStatusColor(product.status)}`}>
+                      {product.status === 'working' ? 'Çalışıyor' : product.status === 'broken' ? 'Arızalı' : 'Tamirde'}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-md text-[11px] font-medium ${getStockStatusColor(product.stock_status)}`}>
+                      {product.stock_status === 'available' ? 'Mevcut' : product.stock_status === 'sold' ? 'Satıldı' : 'Rezerve'}
+                    </span>
+                  </div>
+
+                  {/* Sell button */}
+                  {product.stock_status === 'available' && (
+                    <button
+                      onClick={() => {
+                        setSellModalProduct(product)
+                        setSellPrice(String(product.sale_price))
+                      }}
+                      className="w-full flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white font-medium py-2.5 rounded-xl transition-colors text-sm"
+                    >
+                      <ShoppingCart className="w-4 h-4" />
+                      Satıldı
+                    </button>
+                  )}
+                </div>
               </Card>
             ))}
           </div>
         )}
       </div>
 
-      {/* ═══ Satış Modal ═══ */}
+      {/* Sell Modal */}
       {sellModalProduct && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-md p-5 sm:p-6 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:pb-6 animate-slide-up sm:animate-none">
+            <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-3 sm:hidden" />
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900">Ürün Satışı</h3>
               <button
                 onClick={() => { setSellModalProduct(null); setSellPrice('') }}
-                className="p-1 hover:bg-gray-100 rounded-full"
+                className="p-1.5 hover:bg-gray-100 rounded-lg"
               >
                 <X className="w-5 h-5 text-gray-500" />
               </button>

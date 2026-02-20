@@ -16,14 +16,15 @@ def get_daily_summary(day: date):
     date_q = {"date": {"$gte": start_dt, "$lte": end_dt}}
     created_q = {"created_at": {"$gte": start_dt, "$lte": end_dt}}
 
-    sold = list(transactions_col.find({**date_q, "transaction_type": "sale"}))
-    purchased = list(transactions_col.find({**date_q, "transaction_type": "purchase"}))
-    expenses = list(expenses_col.find(date_q))
-    reminders = list(reminders_col.find(date_q))
-    notes = list(notes_col.find(date_q))
-    new_products = list(products_col.find(created_q))
-    new_categories = list(categories_col.find(created_q))
-    new_suppliers = list(suppliers_col.find(created_q))
+    _txn_proj = {"_id": 0, "id": 1, "product_id": 1, "transaction_type": 1, "amount": 1, "date": 1, "description": 1}
+    sold = list(transactions_col.find({**date_q, "transaction_type": "sale"}, _txn_proj))
+    purchased = list(transactions_col.find({**date_q, "transaction_type": "purchase"}, _txn_proj))
+    expenses = list(expenses_col.find(date_q, {"_id": 0, "id": 1, "product_id": 1, "expense_type": 1, "amount": 1, "date": 1, "description": 1}))
+    reminders = list(reminders_col.find(date_q, {"_id": 0, "id": 1, "title": 1, "description": 1, "date": 1, "is_completed": 1}))
+    notes = list(notes_col.find(date_q, {"_id": 0, "id": 1, "title": 1, "content": 1, "date": 1}))
+    new_products = list(products_col.find(created_q, {"_id": 0, "id": 1, "name": 1}))
+    new_categories = list(categories_col.find(created_q, {"_id": 0, "id": 1, "name": 1}))
+    new_suppliers = list(suppliers_col.find(created_q, {"_id": 0, "id": 1, "name": 1, "phone": 1, "email": 1}))
 
     total_revenue = sum(t.get("amount", 0) for t in sold)
     total_expenses = sum(e.get("amount", 0) for e in expenses)

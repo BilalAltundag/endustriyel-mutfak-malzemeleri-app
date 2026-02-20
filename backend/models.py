@@ -11,11 +11,30 @@ class StockStatus(str, Enum):
     RESERVED = "reserved"
 
 
+# Spec field definition (embedded in ProductTypeItem or Category defaults)
+class SpecFieldItem(BaseModel):
+    name: str
+    label: str
+    type: str = "text"
+    options: Optional[List[str]] = None
+    unit: Optional[str] = None
+    placeholder: Optional[str] = None
+
+
+# Product Type Model (embedded in Category)
+class ProductTypeItem(BaseModel):
+    value: str
+    label: str
+    fields: Optional[List[SpecFieldItem]] = None
+
+
 # Category Models
 class CategoryBase(BaseModel):
     name: str
     description: Optional[str] = None
     is_active: bool = True
+    product_types: Optional[List[ProductTypeItem]] = None
+    default_fields: Optional[List[SpecFieldItem]] = None
 
 
 class CategoryCreate(CategoryBase):
@@ -26,6 +45,8 @@ class CategoryUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     is_active: Optional[bool] = None
+    product_types: Optional[List[ProductTypeItem]] = None
+    default_fields: Optional[List[SpecFieldItem]] = None
 
 
 class Category(CategoryBase):

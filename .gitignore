@@ -52,16 +52,18 @@ Thumbs.db
 test_*.py
 test_*.json
 
-# ngrok (auth token içerir)
+# ngrok (contains auth tokens)
 ngrok.yml
 ngrok-*.yml
 
-# Log dosyaları
+# Log files
 *.log
 backend_log.txt
 backend/backend_log.txt
 
-# Test dosyaları (root)
-test_*.py
-test_*.json
+# Temporary scripts
+backend/clear_data.py
+
+# certifi (auto-downloaded)
+certifi/
 

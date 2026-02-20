@@ -8,9 +8,9 @@ router = APIRouter()
 
 
 @router.get("/")
-def get_suppliers(include_inactive: bool = False):
+def get_suppliers(include_inactive: bool = False, skip: int = 0, limit: int = 200):
     query = {} if include_inactive else {"is_active": True}
-    docs = suppliers_col.find(query).sort("name", 1)
+    docs = suppliers_col.find(query).sort("name", 1).skip(skip).limit(limit)
     return [doc_to_dict(d) for d in docs]
 
 

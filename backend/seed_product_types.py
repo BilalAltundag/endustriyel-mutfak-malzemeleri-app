@@ -1,12 +1,8 @@
-from fastapi import APIRouter, HTTPException
+"""Mevcut kategorilere product_types ekleyen tek seferlik script."""
+from database import categories_col
 from datetime import datetime
 
-from database import categories_col, products_col, get_next_id, doc_to_dict
-from models import CategoryCreate, CategoryUpdate, Category as CategoryModel
-
-router = APIRouter()
-
-SEED_PRODUCT_TYPES: dict[str, list[dict]] = {
+SEED_PRODUCT_TYPES = {
     "Evyeler": [
         {"value": "tek_gozlu_evye", "label": "Tek Gözlü Evye"},
         {"value": "cift_gozlu_evye", "label": "Çift Gözlü Evye"},
@@ -153,88 +149,22 @@ SEED_PRODUCT_TYPES: dict[str, list[dict]] = {
     ],
 }
 
-
-@router.get("/")
-def get_categories(include_inactive: bool = False, skip: int = 0, limit: int = 200):
-    query = {} if include_inactive else {"is_active": True}
-    docs = categories_col.find(query).sort("name", 1).skip(skip).limit(limit)
-    return [doc_to_dict(d) for d in docs]
-
-
-@router.get("/{category_id}")
-def get_category(category_id: int):
-    doc = categories_col.find_one({"id": category_id})
-    if not doc:
-        raise HTTPException(status_code=404, detail="Category not found")
-    return doc_to_dict(doc)
-
-
-@router.post("/")
-def create_category(category: CategoryCreate):
-    existing = categories_col.find_one({"name": category.name})
-    if existing:
-        raise HTTPException(status_code=400, detail="Category with this name already exists")
-
-    now = datetime.utcnow()
-    doc = {
-        "id": get_next_id("categories"),
-        **category.dict(),
-        "created_at": now,
-        "updated_at": now,
-    }
-    categories_col.insert_one(doc)
-    return doc_to_dict(doc)
-
-
-@router.put("/{category_id}")
-def update_category(category_id: int, category_update: CategoryUpdate):
-    doc = categories_col.find_one({"id": category_id})
-    if not doc:
-        raise HTTPException(status_code=404, detail="Category not found")
-
-    update_data = category_update.dict(exclude_unset=True)
-
-    if "name" in update_data:
-        existing = categories_col.find_one({"name": update_data["name"], "id": {"$ne": category_id}})
-        if existing:
-            raise HTTPException(status_code=400, detail="Category with this name already exists")
-
-    update_data["updated_at"] = datetime.utcnow()
-    categories_col.update_one({"id": category_id}, {"$set": update_data})
-
-    updated = categories_col.find_one({"id": category_id})
-    return doc_to_dict(updated)
-
-
-@router.delete("/{category_id}")
-def delete_category(category_id: int):
-    doc = categories_col.find_one({"id": category_id})
-    if not doc:
-        raise HTTPException(status_code=404, detail="Category not found")
-
-    has_products = products_col.find_one({"category_id": category_id})
-    if has_products:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot delete category with associated products. Please remove or reassign products first."
-        )
-
-    categories_col.delete_one({"id": category_id})
-    return {"message": "Category deleted successfully"}
-
-
-@router.post("/seed-product-types")
-def seed_product_types():
-    """Populate product_types for categories that don't have them yet."""
+if __name__ == "__main__":
     updated = 0
+    not_found = 0
+
     for doc in categories_col.find():
-        if doc.get("product_types"):
-            continue
-        types = SEED_PRODUCT_TYPES.get(doc["name"])
+        name = doc.get("name", "")
+        types = SEED_PRODUCT_TYPES.get(name)
         if types:
             categories_col.update_one(
                 {"id": doc["id"]},
                 {"$set": {"product_types": types, "updated_at": datetime.utcnow()}},
             )
+            print(f"[OK] {name}: {len(types)} ürün çeşidi eklendi")
             updated += 1
-    return {"message": f"Seeded product types for {updated} categories"}
+        else:
+            print(f"[SKIP] {name}: şablonda karşılığı yok")
+            not_found += 1
+
+    print(f"\nToplam: {updated} kategori güncellendi, {not_found} eşleşmedi")
