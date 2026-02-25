@@ -250,7 +250,7 @@ export default function MarketplaceSearchPage() {
             Marketplace Arama
           </h1>
           <p className="text-sm text-gray-500">
-            Facebook Marketplace'te AI destekli ürün araması
+            Facebook Marketplace&apos;te AI destekli ürün araması
           </p>
         </div>
 
