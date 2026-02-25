@@ -5,6 +5,9 @@ A full-stack business management platform built for **second-hand industrial kit
 > **Built with:** Next.js 14 · FastAPI · MongoDB Atlas · Google Gemini AI · TailwindCSS
 
 ---
+<img width="735" height="436" alt="image" src="https://github.com/user-attachments/assets/6133328a-1f45-439f-8ab7-ebbec19dcc77" />
+<img width="845" height="332" alt="image" src="https://github.com/user-attachments/assets/8e106e26-0ace-4095-94fd-2c192c0067df" />
+<img width="905" height="479" alt="image" src="https://github.com/user-attachments/assets/5fdbcd50-95f8-41a7-9b02-0775294e1ad7" />
 
 ## Features
 
