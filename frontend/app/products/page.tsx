@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { Plus, Edit, Trash2, Image as ImageIcon, ShoppingCart, X, ArrowRight, Filter, TrendingUp } from 'lucide-react'
+import { Plus, Edit, Trash2, Image as ImageIcon, ShoppingCart, X, ArrowRight, Filter, TrendingUp, ChevronLeft, ChevronRight, ZoomIn } from 'lucide-react'
 import { productsApi } from '@/lib/api'
 import { useProducts, useCategories, useInvalidate, useAiPriceResults } from '@/lib/hooks'
 import Button from '@/components/ui/Button'
@@ -85,6 +85,162 @@ function getImageUrl(path: string): string {
   return `/api/static${path}`
 }
 
+function ImageLightbox({
+  images,
+  initialIndex,
+  onClose,
+}: {
+  images: string[]
+  initialIndex: number
+  onClose: () => void
+}) {
+  const [currentIndex, setCurrentIndex] = useState(initialIndex)
+
+  const goNext = useCallback(() => {
+    setCurrentIndex((i) => (i + 1) % images.length)
+  }, [images.length])
+
+  const goPrev = useCallback(() => {
+    setCurrentIndex((i) => (i - 1 + images.length) % images.length)
+  }, [images.length])
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+      else if (e.key === 'ArrowRight') goNext()
+      else if (e.key === 'ArrowLeft') goPrev()
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [onClose, goNext, goPrev])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90" onClick={onClose}>
+      <div className="relative w-full h-full flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 z-10 p-2 bg-black/50 hover:bg-black/70 text-white rounded-full transition-colors"
+        >
+          <X className="w-6 h-6" />
+        </button>
+
+        {images.length > 1 && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 bg-black/50 text-white text-sm px-3 py-1 rounded-full">
+            {currentIndex + 1} / {images.length}
+          </div>
+        )}
+
+        {images.length > 1 && (
+          <>
+            <button
+              onClick={goPrev}
+              className="absolute left-2 sm:left-4 z-10 p-2 sm:p-3 bg-black/50 hover:bg-black/70 text-white rounded-full transition-colors"
+            >
+              <ChevronLeft className="w-6 h-6 sm:w-7 sm:h-7" />
+            </button>
+            <button
+              onClick={goNext}
+              className="absolute right-2 sm:right-4 z-10 p-2 sm:p-3 bg-black/50 hover:bg-black/70 text-white rounded-full transition-colors"
+            >
+              <ChevronRight className="w-6 h-6 sm:w-7 sm:h-7" />
+            </button>
+          </>
+        )}
+
+        <img
+          src={getImageUrl(images[currentIndex])}
+          alt={`Resim ${currentIndex + 1}`}
+          className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg select-none"
+          draggable={false}
+        />
+
+        {images.length > 1 && (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5">
+            {images.map((_, idx) => (
+              <button
+                key={idx}
+                onClick={() => setCurrentIndex(idx)}
+                className={`w-2 h-2 rounded-full transition-all ${
+                  idx === currentIndex ? 'bg-white scale-125' : 'bg-white/40 hover:bg-white/70'
+                }`}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ProductImageCarousel({
+  images,
+  productName,
+  onOpenLightbox,
+}: {
+  images: string[]
+  productName: string
+  onOpenLightbox: (index: number) => void
+}) {
+  const [currentIndex, setCurrentIndex] = useState(0)
+
+  return (
+    <div className="relative w-full aspect-[4/3] bg-gray-100 overflow-hidden group">
+      <img
+        src={getImageUrl(images[currentIndex])}
+        alt={productName}
+        className="w-full h-full object-cover cursor-pointer"
+        loading="lazy"
+        onClick={() => onOpenLightbox(currentIndex)}
+      />
+
+      <button
+        onClick={() => onOpenLightbox(currentIndex)}
+        className="absolute top-2 right-2 p-1.5 bg-black/40 hover:bg-black/60 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+      >
+        <ZoomIn className="w-4 h-4" />
+      </button>
+
+      {images.length > 1 && (
+        <>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              setCurrentIndex((i) => (i - 1 + images.length) % images.length)
+            }}
+            className="absolute left-1.5 top-1/2 -translate-y-1/2 p-1 bg-black/40 hover:bg-black/60 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              setCurrentIndex((i) => (i + 1) % images.length)
+            }}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 bg-black/40 hover:bg-black/60 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
+            {images.map((_, idx) => (
+              <button
+                key={idx}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setCurrentIndex(idx)
+                }}
+                className={`w-1.5 h-1.5 rounded-full transition-all ${
+                  idx === currentIndex ? 'bg-white scale-125' : 'bg-white/50'
+                }`}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function ProductsPage() {
   const [filter, setFilter] = useState({ category_id: '', stock_status: '', status: '' })
   const [showFilters, setShowFilters] = useState(false)
@@ -92,6 +248,9 @@ export default function ProductsPage() {
   const [sellModalProduct, setSellModalProduct] = useState<Product | null>(null)
   const [sellPrice, setSellPrice] = useState('')
   const [sellLoading, setSellLoading] = useState(false)
+
+  const [lightboxImages, setLightboxImages] = useState<string[] | null>(null)
+  const [lightboxIndex, setLightboxIndex] = useState(0)
 
   const invalidate = useInvalidate()
 
@@ -291,14 +450,14 @@ export default function ProductsPage() {
               <Card key={product.id} className="overflow-hidden">
                 {/* Image */}
                 {product.images && product.images.length > 0 ? (
-                  <div className="w-full aspect-[4/3] bg-gray-100 overflow-hidden">
-                    <img
-                      src={getImageUrl(product.images[0])}
-                      alt={product.name}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                    />
-                  </div>
+                  <ProductImageCarousel
+                    images={product.images}
+                    productName={product.name}
+                    onOpenLightbox={(index) => {
+                      setLightboxImages(product.images!)
+                      setLightboxIndex(index)
+                    }}
+                  />
                 ) : (
                   <div className="w-full aspect-[4/3] bg-gray-50 flex items-center justify-center">
                     <ImageIcon className="w-10 h-10 text-gray-300" />
@@ -423,6 +582,15 @@ export default function ProductsPage() {
           </div>
         )}
       </div>
+
+      {/* Image Lightbox */}
+      {lightboxImages && (
+        <ImageLightbox
+          images={lightboxImages}
+          initialIndex={lightboxIndex}
+          onClose={() => setLightboxImages(null)}
+        />
+      )}
 
       {/* Sell Modal */}
       {sellModalProduct && (
