@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-// Next.js rewrites proxy /api/* → localhost:8000/api/* (no CORS needed)
+// Next.js rewrites proxy: /api/* → BACKEND_URL/api/* (see next.config.js)
 const API_BASE_URL = '/api'
 
 const api = axios.create({

@@ -4,13 +4,16 @@ Facebook Marketplace Search Agent
 browser-use + Gemini ile Facebook Marketplace'te serbest metin araması yapar.
 Ürün başlığı, fiyat, açıklama, konum ve link bilgilerini döndürür.
 """
+import asyncio
 import json
 import os
 import re
+import sys
 import logging
 import uuid
 from datetime import datetime
 from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
 
 from dotenv import load_dotenv
 from langsmith import Client as LangSmithClient
@@ -18,6 +21,8 @@ from langsmith import Client as LangSmithClient
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+_browser_executor = ThreadPoolExecutor(max_workers=2)
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 LANGSMITH_MARKETPLACE_API_KEY = os.getenv("LANGSMITH_MARKETPLACE_API_KEY")
@@ -76,6 +81,36 @@ def _title_matches_query(title: str, query: str) -> bool:
     return False
 
 
+def _run_browser_agent_sync(task_text: str, api_key: str):
+    """Windows'ta subprocess desteği için ProactorEventLoop ile ayrı thread'de çalıştırır."""
+    if sys.platform == "win32":
+        loop = asyncio.ProactorEventLoop()
+    else:
+        loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(_run_browser_agent_async(task_text, api_key))
+    finally:
+        loop.close()
+
+
+async def _run_browser_agent_async(task_text: str, api_key: str):
+    """Browser agent'ı async olarak çalıştırır."""
+    from browser_use import Agent, Browser
+    from browser_use.llm import ChatGoogle
+
+    llm = ChatGoogle(model="gemini-2.5-flash", api_key=api_key)
+    browser = Browser(headless=True)
+    try:
+        agent = Agent(task=task_text, llm=llm, browser=browser, max_steps=25)
+        return await agent.run()
+    finally:
+        try:
+            await browser.close()
+        except Exception:
+            pass
+
+
 async def search_marketplace_listings(
     query: str,
     location: str = "İzmir",
@@ -96,14 +131,6 @@ async def search_marketplace_listings(
             start_time=datetime.utcnow(),
             id=run_id,
         )
-
-    from browser_use import Agent, Browser
-    from browser_use.llm import ChatGoogle
-
-    llm = ChatGoogle(
-        model="gemini-2.5-flash",
-        api_key=GOOGLE_API_KEY,
-    )
 
     days_map = {"24_hours": 1, "7_days": 7, "30_days": 30}
     days = days_map.get(time_period, 1)
@@ -140,17 +167,14 @@ CRITICAL RULES:
 - The done action text MUST be ONLY valid JSON. No explanation text before or after.
 - Complete within 20 steps."""
 
-    browser = Browser(headless=True)
-
     try:
         with _langsmith_env():
-            agent = Agent(
-                task=task,
-                llm=llm,
-                browser=browser,
-                max_steps=25,
+            main_loop = asyncio.get_running_loop()
+            result = await main_loop.run_in_executor(
+                _browser_executor,
+                _run_browser_agent_sync,
+                task, GOOGLE_API_KEY,
             )
-            result = await agent.run()
 
         final_text = result.final_result()
         logger.info(
@@ -183,11 +207,6 @@ CRITICAL RULES:
                 end_time=datetime.utcnow(),
             )
         return error_result
-    finally:
-        try:
-            await browser.close()
-        except Exception:
-            pass
 
 
 def _parse_marketplace_result(text: str, query: str) -> dict:
