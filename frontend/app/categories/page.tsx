@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Plus, Edit, Trash2, X, Tag, ChevronDown, ChevronUp, Settings2 } from 'lucide-react'
-import { categoriesApi } from '@/lib/api'
+import { useEffect, useState, useRef } from 'react'
+import { Plus, Edit, Trash2, X, Tag, ChevronDown, ChevronUp, Settings2, Sparkles, Send, Loader2, Bot, User } from 'lucide-react'
+import { categoriesApi, aiApi } from '@/lib/api'
 import Button from '@/components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 
@@ -60,6 +60,19 @@ export default function CategoriesPage() {
   const [newDefFieldType, setNewDefFieldType] = useState('text')
   const [newDefFieldUnit, setNewDefFieldUnit] = useState('')
   const [newDefFieldOptions, setNewDefFieldOptions] = useState('')
+
+  const [showAiPanel, setShowAiPanel] = useState(false)
+  const [aiInput, setAiInput] = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiMessages, setAiMessages] = useState<Array<{ role: 'user' | 'ai'; text: string }>>([])
+  const aiInputRef = useRef<HTMLTextAreaElement>(null)
+  const aiMessagesEndRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (aiMessagesEndRef.current) {
+      aiMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [aiMessages])
 
   useEffect(() => { fetchCategories() }, [])
 
@@ -126,6 +139,9 @@ export default function CategoriesPage() {
     setNewTypeName('')
     setExpandedType(null)
     setShowDefaultFields(false)
+    setShowAiPanel(false)
+    setAiInput('')
+    setAiMessages([])
     resetFieldForm()
     resetDefFieldForm()
   }
@@ -142,6 +158,80 @@ export default function CategoriesPage() {
     setNewDefFieldType('text')
     setNewDefFieldUnit('')
     setNewDefFieldOptions('')
+  }
+
+  const handleAiAssist = async () => {
+    const msg = aiInput.trim()
+    if (!msg || aiLoading) return
+
+    setAiMessages((prev) => [...prev, { role: 'user', text: msg }])
+    setAiInput('')
+    setAiLoading(true)
+
+    try {
+      const currentCategory = {
+        name: formData.name,
+        description: formData.description,
+        product_types: productTypes.map((pt) => ({
+          value: pt.value,
+          label: pt.label,
+          fields: pt.fields || null,
+        })),
+        default_fields: defaultFields,
+      }
+
+      const response = await aiApi.categoryAssist(msg, currentCategory)
+      const data = response.data
+
+      if (data.status === 'success' && data.category_data) {
+        const cat = data.category_data
+
+        if (cat.name) setFormData((prev) => ({ ...prev, name: cat.name }))
+        if (cat.description !== undefined) setFormData((prev) => ({ ...prev, description: cat.description || '' }))
+
+        if (cat.product_types && Array.isArray(cat.product_types)) {
+          setProductTypes(cat.product_types.map((pt: any) => ({
+            value: pt.value,
+            label: pt.label,
+            fields: pt.fields && pt.fields.length > 0 ? pt.fields : null,
+          })))
+        }
+
+        if (cat.default_fields && Array.isArray(cat.default_fields)) {
+          setDefaultFields(cat.default_fields)
+        }
+
+        setAiMessages((prev) => [...prev, { role: 'ai', text: data.message || 'Kategori güncellendi.' }])
+      } else {
+        setAiMessages((prev) => [...prev, { role: 'ai', text: data.message || 'Bir hata oluştu, lütfen tekrar deneyin.' }])
+      }
+    } catch (error: any) {
+      const errMsg = error.response?.data?.message || error.response?.data?.detail || 'AI ile bağlantı kurulamadı.'
+      setAiMessages((prev) => [...prev, { role: 'ai', text: `Hata: ${errMsg}` }])
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  const handleAiKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleAiAssist()
+    }
+  }
+
+  const toggleAiPanel = () => {
+    setShowAiPanel((prev) => !prev)
+    if (!showAiPanel && aiMessages.length === 0) {
+      const isNew = !editingCategory
+      setAiMessages([{
+        role: 'ai',
+        text: isNew
+          ? 'Merhaba! Yeni kategori oluşturmana yardımcı olabilirim. Kategori adı, ürün çeşitleri ve teknik alanlar hakkında ne istersen yaz.'
+          : `"${formData.name}" kategorisini düzenliyorsun. Ürün çeşidi ekle/sil, teknik alan ekle, kategori adını değiştir — ne istersen yaz.`,
+      }])
+    }
+    setTimeout(() => aiInputRef.current?.focus(), 100)
   }
 
   const addProductType = () => {
@@ -310,8 +400,99 @@ export default function CategoriesPage() {
         {showForm && (
           <Card className="mb-5 sm:mb-6">
             <CardHeader className="px-4 sm:px-6">
-              <CardTitle className="text-base sm:text-xl">{editingCategory ? 'Kategori Düzenle' : 'Yeni Kategori'}</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base sm:text-xl">{editingCategory ? 'Kategori Düzenle' : 'Yeni Kategori'}</CardTitle>
+                <button
+                  type="button"
+                  onClick={toggleAiPanel}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium transition-all ${
+                    showAiPanel
+                      ? 'bg-violet-100 text-violet-700 border border-violet-300 shadow-sm'
+                      : 'bg-gradient-to-r from-violet-500 to-indigo-500 text-white hover:from-violet-600 hover:to-indigo-600 shadow-md hover:shadow-lg'
+                  }`}
+                >
+                  <Sparkles className="w-4 h-4" />
+                  AI ile {editingCategory ? 'Düzenle' : 'Oluştur'}
+                </button>
+              </div>
             </CardHeader>
+
+            {showAiPanel && (
+              <div className="mx-4 sm:mx-6 mb-4 border border-violet-200 rounded-2xl bg-gradient-to-b from-violet-50/80 to-white overflow-hidden">
+                <div className="px-4 py-3 border-b border-violet-100 flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full bg-violet-100 flex items-center justify-center">
+                    <Bot className="w-3.5 h-3.5 text-violet-600" />
+                  </div>
+                  <span className="text-sm font-medium text-violet-800">Kategori Asistanı</span>
+                  <span className="text-[10px] text-violet-500 ml-auto">Gemini AI</span>
+                </div>
+
+                <div className="max-h-64 overflow-y-auto px-4 py-3 space-y-3">
+                  {aiMessages.map((msg, idx) => (
+                    <div key={idx} className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      {msg.role === 'ai' && (
+                        <div className="w-6 h-6 rounded-full bg-violet-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <Bot className="w-3.5 h-3.5 text-violet-600" />
+                        </div>
+                      )}
+                      <div className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${
+                        msg.role === 'user'
+                          ? 'bg-violet-600 text-white rounded-br-md'
+                          : 'bg-white border border-violet-100 text-gray-800 rounded-bl-md shadow-sm'
+                      }`}>
+                        {msg.text}
+                      </div>
+                      {msg.role === 'user' && (
+                        <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <User className="w-3.5 h-3.5 text-gray-600" />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {aiLoading && (
+                    <div className="flex gap-2 justify-start">
+                      <div className="w-6 h-6 rounded-full bg-violet-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Bot className="w-3.5 h-3.5 text-violet-600" />
+                      </div>
+                      <div className="bg-white border border-violet-100 rounded-2xl rounded-bl-md px-3.5 py-2 shadow-sm">
+                        <div className="flex items-center gap-1.5">
+                          <Loader2 className="w-3.5 h-3.5 text-violet-500 animate-spin" />
+                          <span className="text-sm text-violet-500">Düşünüyor...</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <div ref={aiMessagesEndRef} />
+                </div>
+
+                <div className="px-4 py-3 border-t border-violet-100 bg-white/80">
+                  <div className="flex gap-2 items-end">
+                    <textarea
+                      ref={aiInputRef}
+                      value={aiInput}
+                      onChange={(e) => setAiInput(e.target.value)}
+                      onKeyDown={handleAiKeyDown}
+                      placeholder="Örn: 'Buzdolabı kategorisi oluştur, tek kapılı ve çift kapılı çeşitleri ekle, hacim ve soğutma tipi alanları olsun'"
+                      className="flex-1 rounded-xl border border-violet-200 px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-violet-400 focus:border-violet-400 placeholder:text-gray-400"
+                      rows={2}
+                      disabled={aiLoading}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAiAssist}
+                      disabled={!aiInput.trim() || aiLoading}
+                      className="p-2.5 rounded-xl bg-violet-600 text-white hover:bg-violet-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                    >
+                      {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-1.5">
+                    Enter ile gönder · Shift+Enter yeni satır · Ürün çeşidi, teknik alan, kategori adı/açıklama değiştirebilirsiniz
+                  </p>
+                </div>
+              </div>
+            )}
+
             <CardContent className="px-4 sm:px-6">
               <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">

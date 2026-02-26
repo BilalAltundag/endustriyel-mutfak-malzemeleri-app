@@ -19,6 +19,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel as _PydanticBaseModel
 
 from database import products_col, categories_col, get_next_id
 
@@ -329,6 +330,192 @@ async def transcribe_audio(
     except Exception as e:
         logger.error("Transcription hatası: %s", str(e), exc_info=True)
         raise HTTPException(status_code=500, detail=f"Ses çevirme hatası: {str(e)}")
+
+
+CATEGORY_ASSIST_PROMPT = """Sen endüstriyel mutfak ekipmanları kategori yönetim asistanısın. Kullanıcının doğal dilde yazdığı talimatları anlayıp kategori verisini güncelleyeceksin.
+
+## MEVCUT KATEGORİ VERİSİ
+{current_data}
+
+## KULLANICI TALİMATI
+{user_message}
+
+## KURALLAR
+1. Kullanıcının talebini analiz et ve mevcut kategori verisini buna göre güncelle.
+2. Ürün çeşidi (product_types) eklerken value alanı snake_case olmalı (Türkçe karakterler dönüştürülmeli: ş→s, ç→c, ğ→g, ü→u, ö→o, ı→i).
+3. Teknik alan (fields) eklerken name alanı snake_case olmalı.
+4. Teknik alan tipi "text", "number" veya "select" olabilir.
+5. Select tipindeki alanlar için options listesi sağla.
+6. Birim (unit) varsa ekle: cm, mm, kg, L, HP vb.
+7. Mevcut verileri koruyarak sadece talep edilen değişiklikleri yap.
+8. Eğer kullanıcı sadece ürün çeşidi ekliyorsa, diğer alanları olduğu gibi bırak.
+9. Eğer kullanıcı sadece teknik alan ekliyorsa, diğer alanları olduğu gibi bırak.
+10. "message" alanında yaptığın değişiklikleri kısa özetle (Türkçe).
+
+## ÇIKTI (SADECE JSON, başka bir şey yazma)
+{{
+    "name": "Kategori adı",
+    "description": "Kategori açıklaması",
+    "product_types": [
+        {{
+            "value": "snake_case_deger",
+            "label": "Görünen Ad",
+            "fields": [
+                {{
+                    "name": "alan_adi",
+                    "label": "Alan Başlığı",
+                    "type": "number|text|select",
+                    "unit": "cm",
+                    "options": ["seçenek1", "seçenek2"]
+                }}
+            ]
+        }}
+    ],
+    "default_fields": [
+        {{
+            "name": "alan_adi",
+            "label": "Alan Başlığı",
+            "type": "number|text|select",
+            "unit": "birim",
+            "options": []
+        }}
+    ],
+    "message": "Yapılan değişikliklerin kısa özeti"
+}}"""
+
+
+class CategoryAssistRequest(_PydanticBaseModel):
+    message: str
+    current_category: Optional[dict] = None
+
+
+@router.post("/category-assist")
+async def category_assist(body: CategoryAssistRequest):
+    """AI ile kategori oluşturma/düzenleme asistanı.
+
+    Kullanıcı doğal dilde ne istediğini yazar,
+    AI mevcut kategori verisini buna göre günceller.
+    """
+    try:
+        current_data = body.current_category or {
+            "name": "",
+            "description": "",
+            "product_types": [],
+            "default_fields": [],
+        }
+
+        current_data_str = json.dumps(current_data, ensure_ascii=False, indent=2)
+
+        prompt = CATEGORY_ASSIST_PROMPT.format(
+            current_data=current_data_str,
+            user_message=body.message,
+        )
+
+        from agent.config import (
+            GOOGLE_MODEL,
+            GOOGLE_MODEL_FALLBACK,
+            configure_langsmith,
+            get_google_llm,
+        )
+        from agent.retry import invoke_with_retry, is_rate_limit_error
+        from langchain_core.messages import HumanMessage
+
+        configure_langsmith()
+
+        models_to_try = [GOOGLE_MODEL, GOOGLE_MODEL_FALLBACK]
+        result_data = None
+
+        for model_name in models_to_try:
+            try:
+                llm = get_google_llm(model=model_name)
+                response = invoke_with_retry(
+                    llm.invoke,
+                    [HumanMessage(content=prompt)],
+                )
+                raw_text = response.content
+
+                parsed = _extract_json_from_text(raw_text)
+                if parsed:
+                    result_data = parsed
+                    break
+            except Exception as e:
+                if is_rate_limit_error(e):
+                    continue
+                raise
+
+        if not result_data:
+            return JSONResponse(content={
+                "status": "error",
+                "message": "AI yanıtı işlenemedi. Lütfen tekrar deneyin.",
+                "category_data": None,
+            })
+
+        ai_message = result_data.pop("message", "Kategori güncellendi.")
+
+        category_data = {
+            "name": result_data.get("name", current_data.get("name", "")),
+            "description": result_data.get("description", current_data.get("description", "")),
+            "product_types": result_data.get("product_types", current_data.get("product_types", [])),
+            "default_fields": result_data.get("default_fields", current_data.get("default_fields", [])),
+        }
+
+        for pt in category_data.get("product_types", []):
+            if pt.get("fields") is None:
+                pt["fields"] = None
+            elif isinstance(pt.get("fields"), list) and len(pt["fields"]) == 0:
+                pt["fields"] = None
+
+        return JSONResponse(content={
+            "status": "success",
+            "message": ai_message,
+            "category_data": category_data,
+        })
+
+    except Exception as e:
+        logger.error("Category assist hatası: %s", str(e), exc_info=True)
+        error_msg = (
+            "API kota limiti aşıldı. Birkaç dakika bekleyip tekrar deneyin."
+            if "rate_limit" in str(e).lower() or "429" in str(e)
+            else f"AI hatası: {str(e)}"
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"status": "error", "message": error_msg, "category_data": None},
+        )
+
+
+def _extract_json_from_text(text: str) -> Optional[dict]:
+    """Extract JSON from AI response text."""
+    if not text:
+        return None
+
+    try:
+        if "```json" in text:
+            json_str = text.split("```json")[1].split("```")[0].strip()
+            return json.loads(json_str)
+        elif "```" in text:
+            for block in text.split("```")[1::2]:
+                block = block.strip()
+                if block.startswith("json"):
+                    block = block[4:].strip()
+                try:
+                    return json.loads(block)
+                except json.JSONDecodeError:
+                    continue
+    except (json.JSONDecodeError, IndexError):
+        pass
+
+    try:
+        return json.loads(text.strip())
+    except json.JSONDecodeError:
+        pass
+
+    try:
+        start = text.index("{")
+        end = text.rindex("}") + 1
+        return json.loads(text[start:end])
+    except (ValueError, json.JSONDecodeError):
+        return None
 
 
 @router.get("/status")

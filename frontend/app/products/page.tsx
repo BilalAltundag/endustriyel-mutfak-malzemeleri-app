@@ -553,6 +553,13 @@ export default function ProductsPage() {
                     </div>
                   )}
 
+                  {/* Notes */}
+                  {product.notes && (
+                    <div className="bg-amber-50 border border-amber-200/60 rounded-xl px-3 py-2 mb-2">
+                      <p className="text-xs text-amber-800 leading-relaxed line-clamp-3">{product.notes}</p>
+                    </div>
+                  )}
+
                   {/* Status badges */}
                   <div className="flex gap-1.5 flex-wrap mb-3">
                     <span className={`px-2 py-0.5 rounded-md text-[11px] font-medium ${getStatusColor(product.status)}`}>

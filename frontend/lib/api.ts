@@ -158,6 +158,11 @@ export const aiApi = {
       timeout: 180000,
     })
   },
+  categoryAssist: (message: string, currentCategory?: any) =>
+    api.post('/ai/category-assist', {
+      message,
+      current_category: currentCategory || null,
+    }, { timeout: 120000 }),
 }
 
 export default api
