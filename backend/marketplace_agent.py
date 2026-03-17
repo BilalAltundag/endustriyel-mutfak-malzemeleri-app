@@ -94,21 +94,43 @@ def _run_browser_agent_sync(task_text: str, api_key: str):
         loop.close()
 
 
+def _is_rate_limit_error(exc: BaseException) -> bool:
+    """429 / quota / rate limit hatalarını tespit eder."""
+    msg = str(exc).lower()
+    return "429" in msg or "resource_exhausted" in msg or "quota" in msg or "rate limit" in msg
+
+
 async def _run_browser_agent_async(task_text: str, api_key: str):
-    """Browser agent'ı async olarak çalıştırır."""
+    """Browser agent'ı async olarak çalıştırır. Flash → Flash-Lite fallback."""
     from browser_use import Agent, Browser
     from browser_use.llm import ChatGoogle
+    from agent.config import GOOGLE_MODEL, GOOGLE_MODEL_FALLBACK
 
-    llm = ChatGoogle(model="gemini-2.5-flash", api_key=api_key)
-    browser = Browser(headless=True)
-    try:
-        agent = Agent(task=task_text, llm=llm, browser=browser, max_steps=25)
-        return await agent.run()
-    finally:
+    models_to_try = [GOOGLE_MODEL, GOOGLE_MODEL_FALLBACK]
+    last_error = None
+
+    for model_name in models_to_try:
+        llm = ChatGoogle(model=model_name, api_key=api_key)
+        browser = Browser(headless=True)
         try:
-            await browser.close()
-        except Exception:
-            pass
+            agent = Agent(task=task_text, llm=llm, browser=browser, max_steps=25)
+            return await agent.run()
+        except Exception as e:
+            last_error = e
+            if _is_rate_limit_error(e):
+                next_idx = models_to_try.index(model_name) + 1
+                next_model = models_to_try[next_idx] if next_idx < len(models_to_try) else None
+                if next_model:
+                    logger.warning("Model %s kota aşımı, %s deneniyor...", model_name, next_model)
+                continue
+            raise
+        finally:
+            try:
+                await browser.close()
+            except Exception:
+                pass
+
+    raise last_error
 
 
 async def search_marketplace_listings(

@@ -9,13 +9,6 @@ import traceback
 import json
 from datetime import datetime, date
 from bson import ObjectId
-import sys
-import asyncio
-
-# Windows + asyncio + subprocess (browser_use) uyumluluğu için:
-# ProactorEventLoop yerine SelectorEventLoop kullan.
-if sys.platform.startswith("win"):
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 class MongoJSONEncoder(json.JSONEncoder):

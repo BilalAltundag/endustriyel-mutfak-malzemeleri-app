@@ -1,32 +1,28 @@
 """
 Facebook Marketplace Price Scraper Agent
 ──────────────────────────────────────────
-Playwright ile Facebook Marketplace'te fiyat araştırması yapar.
+browser-use + Gemini ile Facebook Marketplace'te fiyat araştırması yapar.
 LangSmith "fiyatarama" projesiyle izlenir.
 """
-import asyncio
 import json
-import logging
 import os
 import re
+import logging
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 from langsmith import Client as LangSmithClient
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-from playwright.sync_api import sync_playwright
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")  # Eski tasarımla uyum için tutuluyor
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 LANGSMITH_PRICE_API_KEY = os.getenv("LANGSMITH_PRICE_API_KEY")
 LANGSMITH_PRICE_PROJECT = os.getenv("LANGSMITH_PRICE_PROJECT", "fiyatarama")
 
-ls_client: Optional[LangSmithClient] = None
+ls_client = None
 if LANGSMITH_PRICE_API_KEY:
     ls_client = LangSmithClient(
         api_key=LANGSMITH_PRICE_API_KEY,
@@ -43,28 +39,8 @@ async def search_marketplace_prices(
     product_name: str,
     location: str = "İzmir",
     time_period: str = "24_hours",
-) -> Dict[str, Any]:
-    """FastAPI'nin kullandığı async API.
-
-    İçeride Playwright senkron API'sini ayrı bir thread'de çalıştırır.
-    Böylece asyncio + subprocess sorunlarından tamamen kurtulmuş oluruz.
-    """
-    return await asyncio.to_thread(
-        _scrape_and_aggregate,
-        product_name,
-        location,
-        time_period,
-    )
-
-
-def _scrape_and_aggregate(
-    product_name: str,
-    location: str,
-    time_period: str,
-) -> Dict[str, Any]:
-    """Playwright ile Facebook'u tarar ve fiyat istatistiklerini hesaplar."""
+) -> dict:
     run_id = uuid.uuid4()
-
     if ls_client:
         ls_client.create_run(
             name="marketplace_price_search",
@@ -79,47 +55,15 @@ def _scrape_and_aggregate(
             id=run_id,
         )
 
-    try:
-        result = _scrape_with_playwright(product_name, location, time_period)
+    from browser_use import Agent, Browser
+    from browser_use.llm import ChatGoogle
+    from agent.config import GOOGLE_MODEL, GOOGLE_MODEL_FALLBACK
 
-        if run_id and ls_client:
-            ls_client.update_run(
-                run_id,
-                outputs=result,
-                end_time=datetime.utcnow(),
-            )
+    models_to_try = [GOOGLE_MODEL, GOOGLE_MODEL_FALLBACK]
 
-        return result
-
-    except Exception as e:
-        logger.error("Playwright price scraper error: %s", str(e), exc_info=True)
-        error_result = {
-            "min_price": None,
-            "max_price": None,
-            "avg_price": None,
-            "cluster_avg_price": None,
-            "listings": [],
-            "total_found": 0,
-            "error": f"Playwright error: {e}",
-        }
-        if run_id and ls_client:
-            ls_client.update_run(
-                run_id,
-                outputs=error_result,
-                error=str(e),
-                end_time=datetime.utcnow(),
-            )
-        return error_result
-
-
-def _scrape_with_playwright(
-    product_name: str,
-    location: str,
-    time_period: str,
-) -> Dict[str, Any]:
-    """Playwright ile Facebook Marketplace'ten ilanları çeker."""
-    listings: List[Dict[str, Any]] = []
-    error: Optional[str] = None
+    def _is_rate_limit_error(exc: BaseException) -> bool:
+        msg = str(exc).lower()
+        return "429" in msg or "resource_exhausted" in msg or "quota" in msg or "rate limit" in msg
 
     days_map = {"24_hours": 1, "7_days": 7, "30_days": 30}
     days = days_map.get(time_period, 1)
@@ -130,169 +74,170 @@ def _scrape_with_playwright(
         f"?query={product_name}&daysSinceListed={days}"
     )
 
-    logger.info("Playwright search URL: %s", search_url)
+    task = f"""Go to {search_url}
+Close any login popup or overlay (click "Kapat" or X button).
+Scroll down 8 times slowly to load more listings.
+
+Then use the extract_content action with this query:
+"Find all product listing cards on this Facebook Marketplace page. For each listing extract: 1) the product title, 2) the price in Turkish Lira as a plain number (e.g. '₺7.100' means 7100, '₺15.000' means 15000 — dots are thousand separators in Turkish), 3) the listing URL. IMPORTANT: SKIP any listing priced at 0, 1, 2, 3, 4, 5 TL or marked as 'Ücretsiz' / 'Free' — these are placeholder prices. Only include listings with realistic prices above 50 TL. Return as a JSON array."
+
+After extraction, immediately use the done action with a JSON object like:
+{{"listings":[{{"title":"...","price":7100,"url":"..."}}]}}
+
+IMPORTANT RULES:
+- Do NOT use find_elements. Use extract_content to read the page.
+- Only include up to 40 listings related to "{product_name}".
+- Turkish price format uses dots as thousand separators: ₺7.100 = 7100, ₺15.000 = 15000.
+- Prices must be numbers (not strings), and must be above 50.
+- SKIP listings with price 0, 1, 2, 3, 4, 5 TL — these are "contact for price" placeholders.
+- If no valid results after filtering, return {{"listings":[]}}
+- Complete within 20 steps. Do NOT retry extractions."""
+
+    last_error = None
+    for model_name in models_to_try:
+        browser = Browser(headless=True)
+        try:
+            llm = ChatGoogle(model=model_name, api_key=GOOGLE_API_KEY)
+            agent = Agent(
+                task=task,
+                llm=llm,
+                browser=browser,
+                max_steps=25,
+            )
+            result = await agent.run()
+            final_text = result.final_result()
+            logger.info(
+                "Agent completed (model=%s). Result length: %d",
+                model_name,
+                len(final_text) if final_text else 0,
+            )
+            parsed = _parse_agent_result(final_text, product_name)
+            if run_id and ls_client:
+                ls_client.update_run(
+                    run_id,
+                    outputs=parsed,
+                    end_time=datetime.utcnow(),
+                )
+            return parsed
+        except Exception as e:
+            last_error = e
+            if _is_rate_limit_error(e):
+                next_idx = models_to_try.index(model_name) + 1
+                if next_idx < len(models_to_try):
+                    logger.warning(
+                        "Model %s kota aşımı, %s deneniyor...",
+                        model_name,
+                        models_to_try[next_idx],
+                    )
+                    continue
+            logger.error("Browser agent error: %s", str(e), exc_info=True)
+            error_result = {
+                "min_price": None,
+                "max_price": None,
+                "avg_price": None,
+                "cluster_avg_price": None,
+                "listings": [],
+                "total_found": 0,
+                "error": str(e),
+            }
+            if run_id and ls_client:
+                ls_client.update_run(
+                    run_id,
+                    outputs=error_result,
+                    error=str(e),
+                    end_time=datetime.utcnow(),
+                )
+            return error_result
+        finally:
+            try:
+                await browser.close()
+            except Exception:
+                pass
+
+    if last_error:
+        raise last_error
+
+
+def _parse_agent_result(text: str, product_name: str) -> dict:
+    """Parse agent output into structured price data."""
+    empty = {
+        "min_price": None,
+        "max_price": None,
+        "avg_price": None,
+        "cluster_avg_price": None,
+        "listings": [],
+        "total_found": 0,
+    }
+
+    if not text:
+        return {**empty, "error": "Agent returned empty result"}
+
+    data = None
+    cleaned = text.strip()
+
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```\w*\n?", "", cleaned)
+        cleaned = re.sub(r"\n?```$", "", cleaned)
 
     try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
+        data = json.loads(cleaned)
+    except json.JSONDecodeError:
+        json_match = re.search(r"\{[\s\S]*\}", text)
+        if json_match:
+            try:
+                data = json.loads(json_match.group())
+            except json.JSONDecodeError:
+                pass
 
-            page.goto(search_url, wait_until="networkidle", timeout=60_000)
+    if not data or not isinstance(data, dict):
+        return {**empty, "error": f"Could not parse result: {text[:300]}"}
 
-            _dismiss_overlays(page)
+    listings = data.get("listings", [])
 
-            # Sayfayı aşağıya kaydırarak daha fazla ilan yükle
-            for _ in range(8):
-                page.mouse.wheel(0, 2500)
-                page.wait_for_timeout(1500)
+    valid_prices = []
+    valid_listings = []
+    for item in listings:
+        price = item.get("price")
+        if isinstance(price, str):
+            price = price.replace("₺", "").replace("TL", "").strip()
+            if re.match(r"^\d{1,3}(\.\d{3})+$", price):
+                price = price.replace(".", "")
+            else:
+                price = re.sub(r"[^\d.]", "", price)
+            try:
+                price = float(price)
+            except ValueError:
+                continue
+        if price and isinstance(price, (int, float)) and price >= 50:
+            url = str(item.get("url", ""))
+            if url and not url.startswith("http"):
+                url = "https://www.facebook.com" + url
+            valid_prices.append(float(price))
+            valid_listings.append(
+                {
+                    "title": str(item.get("title", "")),
+                    "price": float(price),
+                    "url": url,
+                }
+            )
 
-            anchors = page.locator('a[href^="/marketplace/item/"]').all()
-            seen_urls: set[str] = set()
-
-            for a in anchors:
-                href = a.get_attribute("href") or ""
-                if not href:
-                    continue
-                if href in seen_urls:
-                    continue
-                seen_urls.add(href)
-
-                try:
-                    text = a.inner_text()
-                except Exception:
-                    continue
-
-                item = _extract_listing_from_text(text, href)
-                if item:
-                    listings.append(item)
-
-            browser.close()
-
-    except PlaywrightTimeoutError as e:
-        error = f"Playwright timeout: {e}"
-        logger.warning("%s", error)
-    except Exception as e:
-        error = f"Playwright unexpected error: {e}"
-        logger.error("%s", error, exc_info=True)
-
-    # Fiyat istatistikleri
-    if not listings:
+    if valid_prices:
         return {
-            "min_price": None,
-            "max_price": None,
-            "avg_price": None,
-            "cluster_avg_price": None,
-            "listings": [],
-            "total_found": 0,
-            "error": error or "No valid listings found after filtering",
+            "min_price": min(valid_prices),
+            "max_price": max(valid_prices),
+            "avg_price": round(sum(valid_prices) / len(valid_prices), 2),
+            "cluster_avg_price": _cluster_average(valid_prices),
+            "listings": valid_listings,
+            "total_found": len(valid_listings),
         }
 
-    prices = [float(item["price"]) for item in listings]
-    return {
-        "min_price": min(prices),
-        "max_price": max(prices),
-        "avg_price": round(sum(prices) / len(prices), 2),
-        "cluster_avg_price": _cluster_average(prices),
-        "listings": listings,
-        "total_found": len(listings),
-        "error": error,
-    }
+    return {**empty, "error": "No valid listings found after filtering"}
 
 
-def _dismiss_overlays(page) -> None:
-    """Facebook login / cookie popup'larını kapatmaya çalış."""
-    try_selectors = [
-        'button:has-text("Kapat")',
-        'div[aria-label="Kapat"]',
-        'button[aria-label="Kapat"]',
-        'div[role="button"]:has-text("Sadece gerekli çerezlere izin ver")',
-    ]
-    for selector in try_selectors:
-        try:
-            el = page.locator(selector).first
-            if el and el.is_visible():
-                el.click()
-                page.wait_for_timeout(1000)
-        except Exception:
-            continue
-
-
-def _extract_listing_from_text(text: str, href: str) -> Optional[Dict[str, Any]]:
-    """Bir ilan kartının iç metninden başlık ve fiyatı çıkarır."""
-    if not text:
-        return None
-
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
-    if not lines:
-        return None
-
-    price: Optional[float] = None
-    price_line_idx: Optional[int] = None
-
-    for idx, line in enumerate(lines):
-        parsed = _parse_price(line)
-        if parsed is not None:
-            price = parsed
-            price_line_idx = idx
-            break
-
-    if price is None or price < 50:
-        return None
-
-    # Başlık: fiyat satırı dışındaki ilk anlamlı satır
-    title = ""
-    for idx, line in enumerate(lines):
-        if idx == price_line_idx:
-            continue
-        title = line
-        break
-
-    if not title:
-        title = lines[price_line_idx] if price_line_idx is not None else lines[0]
-
-    url = href if href.startswith("http") else "https://www.facebook.com" + href
-
-    return {
-        "title": title,
-        "price": float(price),
-        "url": url,
-    }
-
-
-def _parse_price(line: str) -> Optional[float]:
-    """Bir satır içinden ₺ fiyatı parse eder."""
-    if not line:
-        return None
-
-    # Örnek formatlar:
-    # ₺7.100  → 7100
-    # ₺15.000 → 15000
-    s = line
-    s = s.replace("TL", "").replace("₺", "").strip()
-
-    # Türkçe binlik ayırıcı varsa
-    if re.match(r"^\d{1,3}(\.\d{3})+$", s):
-        s = s.replace(".", "")
-    else:
-        s = re.sub(r"[^\d.]", "", s)
-
-    if not s:
-        return None
-
-    try:
-        value = float(s)
-    except ValueError:
-        return None
-
-    return value
-
-
-def _cluster_average(prices: List[float]) -> Optional[float]:
+def _cluster_average(prices: list[float]) -> float | None:
     """IQR yöntemiyle outlier'ları eleyerek yakın fiyatların ortalamasını hesaplar."""
-    if not prices:
-        return None
     if len(prices) < 3:
-        return round(sum(prices) / len(prices), 2)
+        return round(sum(prices) / len(prices), 2) if prices else None
 
     sorted_p = sorted(prices)
     n = len(sorted_p)
@@ -311,4 +256,3 @@ def _cluster_average(prices: List[float]) -> Optional[float]:
         return round(sum(sorted_p) / n, 2)
 
     return round(sum(inliers) / len(inliers), 2)
-

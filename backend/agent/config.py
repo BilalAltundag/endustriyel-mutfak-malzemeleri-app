@@ -1,7 +1,9 @@
 """
 Agent Konfigürasyonu
 ─────────────────────────────────────────────────────────────
-LLM Provider: Google Gemini Flash (billing aktif — yüksek kota)
+LLM Provider: Google Gemini (free tier, billing gerekmez)
+  - Ana: gemini-2.5-flash (250 RPD)
+  - Fallback: gemini-2.5-flash-lite (1000 RPD)
 Yedek: Groq (rate limit durumunda fallback)
 """
 import os
@@ -15,9 +17,10 @@ else:
     load_dotenv()
 
 # ─── Google AI (Ana LLM Provider) ─────────────────────────────
+# Free tier (billing gerekmez): Flash 250 RPD, Flash-Lite 1000 RPD
 GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
 GOOGLE_MODEL: str = os.getenv("GOOGLE_MODEL", "gemini-2.5-flash")
-GOOGLE_MODEL_FALLBACK: str = os.getenv("GOOGLE_MODEL_FALLBACK", "gemini-2.0-flash")
+GOOGLE_MODEL_FALLBACK: str = os.getenv("GOOGLE_MODEL_FALLBACK", "gemini-2.5-flash-lite")
 
 # ─── Groq (Yedek) ────────────────────────────────────────────
 GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")

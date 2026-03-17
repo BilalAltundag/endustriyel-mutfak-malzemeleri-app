@@ -9,7 +9,7 @@ Bu döküman, projede kullanılan AI servislerinin maliyet ve kota analizini iç
 | Bileşen | Servis | Model | Amaç |
 |---------|--------|-------|------|
 | Ürün Analizi (Ana) | Google Gemini API | `gemini-2.5-flash` | Metin analizinden form JSON oluşturma |
-| Ürün Analizi (Yedek) | Google Gemini API | `gemini-2.0-flash` | Rate limit durumunda fallback |
+| Ürün Analizi (Yedek) | Google Gemini API | `gemini-2.5-flash-lite` | Rate limit durumunda fallback (1000 RPD) |
 | Ses Çevirme | Groq API | `whisper-large-v3-turbo` | Sesli açıklamayı metne çevirme |
 
 ## Mimari
@@ -47,14 +47,14 @@ Retry mekanizması: Rate limit (429) alınırsa aynı model 2 kez denenir, sonra
 > Son güncelleme: Şubat 2026. Google bu limitleri değiştirebilir.
 > Güncel limitler: https://ai.google.dev/gemini-api/docs/rate-limits
 
-| Limit Türü | Gemini 2.5 Flash (Free) | Bizim Kullanımımız | Durum |
-|------------|------------------------|-------------------|-------|
-| Dakikada istek (RPM) | 10 | 1 | Sorun yok |
-| Günde istek (RPD) | 250 | En fazla 1-2 | Sorun yok |
-| Dakikada token (TPM) | 250.000 | ~3.000 | Sorun yok |
-| Aylık sınır | **Yok** (sadece dakika/gün limiti) | ~45.000 | Sorun yok |
+| Limit Türü | Gemini 2.5 Flash (Free) | Flash-Lite (Free) | Bizim Kullanımımız | Durum |
+|------------|------------------------|-------------------|-------------------|-------|
+| Dakikada istek (RPM) | 10 | 15 | 1 | Sorun yok |
+| Günde istek (RPD) | 250 | 1000 | En fazla 1-2 | Sorun yok |
+| Dakikada token (TPM) | 250.000 | 250.000 | ~3.000 | Sorun yok |
+| Aylık sınır | **Yok** (sadece dakika/gün limiti) | **Yok** | ~45.000 | Sorun yok |
 
-**Sonuç:** Free tier limitlerinin %1'ine bile yaklaşmıyoruz. Günde 250 istek hakkımız var, biz ayda 15 yapıyoruz.
+**Sonuç:** Free tier limitlerinin %1'ine bile yaklaşmıyoruz. Flash 250, Flash-Lite 1000 RPD hakkımız var; biz ayda ~15 yapıyoruz. Billing gerekmez.
 
 ### Billing (Ücretlendirme) Durumu
 
@@ -88,12 +88,12 @@ Tüm API anahtarları `backend/.env` dosyasında saklanır:
 ```env
 GOOGLE_API_KEY=...
 GOOGLE_MODEL=gemini-2.5-flash
-GOOGLE_MODEL_FALLBACK=gemini-2.0-flash
+GOOGLE_MODEL_FALLBACK=gemini-2.5-flash-lite
 GROQ_API_KEY=...
 LANGSMITH_API_KEY=...        # Opsiyonel - tracing için
 ```
 
-Fallback sırası: `gemini-2.5-flash` → `gemini-2.0-flash`
+Fallback sırası: `gemini-2.5-flash` → `gemini-2.5-flash-lite`
 
 ---
 
