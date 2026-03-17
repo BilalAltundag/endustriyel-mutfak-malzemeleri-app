@@ -100,9 +100,26 @@ def _is_rate_limit_error(exc: BaseException) -> bool:
     return "429" in msg or "resource_exhausted" in msg or "quota" in msg or "rate limit" in msg
 
 
+def _get_chat_google():
+    """ChatGoogle'ı import et. browser_use.llm paketleme hatası için fallback dener."""
+    try:
+        from browser_use.llm.google.chat import ChatGoogle
+        return ChatGoogle
+    except ImportError:
+        pass
+    try:
+        from browser_use import ChatGoogle
+        return ChatGoogle
+    except ImportError as e:
+        raise ImportError(
+            "browser_use.llm modülü bulunamadı. Şunu deneyin: pip install -U browser-use"
+        ) from e
+
+
 async def _run_browser_agent_async(task_text: str, api_key: str):
     """Browser agent'ı async olarak çalıştırır. Flash → Flash-Lite fallback."""
-    from browser_use import Agent, Browser, ChatGoogle
+    from browser_use import Agent, Browser
+    ChatGoogle = _get_chat_google()
     from agent.config import GOOGLE_MODEL, GOOGLE_MODEL_FALLBACK
 
     models_to_try = [GOOGLE_MODEL, GOOGLE_MODEL_FALLBACK]
