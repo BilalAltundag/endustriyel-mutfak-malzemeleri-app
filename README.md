@@ -163,6 +163,16 @@ start.bat
 
 This installs dependencies (if needed), starts both servers, and opens the browser.
 
+### Render deployment (backend)
+
+Backend Root Directory `backend` ise, Build Command olarak şunu kullanın:
+
+```bash
+bash build.sh
+```
+
+Bu komut `uvx` hatasını önler (playwright chromium build sırasında kurulur).
+
 ---
 
 ## Customization
