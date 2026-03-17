@@ -102,8 +102,7 @@ def _is_rate_limit_error(exc: BaseException) -> bool:
 
 async def _run_browser_agent_async(task_text: str, api_key: str):
     """Browser agent'ı async olarak çalıştırır. Flash → Flash-Lite fallback."""
-    from browser_use import Agent, Browser
-    from browser_use.llm import ChatGoogle
+    from browser_use import Agent, Browser, ChatGoogle
     from agent.config import GOOGLE_MODEL, GOOGLE_MODEL_FALLBACK
 
     models_to_try = [GOOGLE_MODEL, GOOGLE_MODEL_FALLBACK]
