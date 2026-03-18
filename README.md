@@ -171,7 +171,7 @@ Backend Root Directory `backend` ise, Build Command olarak şunu kullanın:
 bash build.sh
 ```
 
-Bu komut `uvx` hatasını önler (playwright chromium build sırasında kurulur).
+Bu komut playwright chromium'u build sırasında kurar (browser-use kaldırıldı, doğrudan Playwright kullanılıyor).
 
 ---
 

@@ -17,12 +17,6 @@ langsmith>=0.2.0
 Pillow>=10.0.0
 cloudinary>=1.36.0
 
-# uv: browser-use uvx playwright install için gerekli (Render)
-uv>=0.4.0
-
-# Browser-Use AI Agent (Facebook Marketplace fiyat tarama)
-# 0.11.x: groq esnek. 0.12+ groq==1.0.0 ister (langchain-groq ile çakışır)
-browser-use>=0.11.0,<0.12.0
-google-genai>=1.0.0
+# Playwright (Facebook Marketplace - chromium build.sh'de kurulur)
 playwright>=1.40.0
 

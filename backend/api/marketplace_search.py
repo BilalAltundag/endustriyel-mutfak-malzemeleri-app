@@ -2,7 +2,7 @@
 Marketplace Search API
 ─────────────────────────────────────────
 Facebook Marketplace serbest metin arama endpoint'leri.
-browser-use agent'ı çalıştırır ve sonuçları MongoDB'ye kaydeder.
+Playwright + Gemini agent ile arama yapar, sonuçları MongoDB'ye kaydeder.
 """
 import logging
 from datetime import datetime
