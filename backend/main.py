@@ -1,11 +1,3 @@
-import os
-
-# Render: playwright tarayıcıları build'de proje içine kurulur
-if "PLAYWRIGHT_BROWSERS_PATH" not in os.environ:
-    _pw_path = os.path.join(os.path.dirname(__file__), ".playwright-browsers")
-    if os.path.exists(_pw_path):
-        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = _pw_path
-
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
