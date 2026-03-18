@@ -20,7 +20,7 @@
 | **Region** | `Frankfurt (EU Central)` |
 | **Root Directory** | `backend` |
 | **Runtime** | `Python 3` |
-| **Build Command** | `pip install -r requirements.txt` |
+| **Build Command** | `bash build.sh` |
 | **Start Command** | `uvicorn main:app --host 0.0.0.0 --port $PORT` |
 | **Instance Type** | `Free` (başlangıç için) |
 

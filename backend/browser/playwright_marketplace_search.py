@@ -76,9 +76,9 @@ async def fetch_marketplace_listings_playwright(
     )
 
     async with async_playwright() as p:
-        # channel="chromium" = full chromium (build.sh --no-shell ile kurulur)
-        # Varsayilan chromium_headless_shell Render'da yok, full chromium kullan
-        browser = await p.chromium.launch(headless=True, channel="chromium")
+        # channel yok = Playwright'in indirdigi chromium_headless_shell kullanilir
+        # Build: playwright install chromium --with-deps
+        browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(
             locale="tr-TR",
             viewport={"width": 1280, "height": 800},
