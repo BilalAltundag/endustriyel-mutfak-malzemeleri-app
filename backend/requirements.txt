@@ -17,6 +17,8 @@ langsmith>=0.2.0
 Pillow>=10.0.0
 cloudinary>=1.36.0
 
-# Playwright (Facebook Marketplace - chromium build.sh'de kurulur)
+# Browser automation (Marketplace + Price agents)
+browser-use>=0.11.11
+# Playwright + Chromium (build.sh'de chromium kurulur)
 playwright>=1.40.0
 
