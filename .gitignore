@@ -67,3 +67,6 @@ backend/clear_data.py
 # certifi (auto-downloaded)
 certifi/
 
+# Playwright browsers (build'de kurulur, Render deploy'a dahil)
+.playwright-browsers/
+
