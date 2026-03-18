@@ -56,10 +56,7 @@ async def search_marketplace_prices(
         )
 
     from browser_use import Agent, Browser
-    try:
-        from browser_use.llm.google.chat import ChatGoogle
-    except ImportError:
-        from browser_use import ChatGoogle
+    from browser_use.llm import ChatGoogle
     from agent.config import GOOGLE_MODEL, GOOGLE_MODEL_FALLBACK
 
     models_to_try = [GOOGLE_MODEL, GOOGLE_MODEL_FALLBACK]
