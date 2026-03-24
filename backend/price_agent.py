@@ -1,7 +1,8 @@
 """
-Facebook Marketplace Price Scraper Agent
+Price Research Agent (Tavily + Gemini)
 ──────────────────────────────────────────
-browser-use + Gemini ile Facebook Marketplace'te fiyat araştırması yapar.
+Tavily API ile web'de fiyat araştırması yapar.
+Gemini ile sonuçlardan yapılandırılmış fiyat verisi çıkarır.
 LangSmith "fiyatarama" projesiyle izlenir.
 """
 import json
@@ -30,11 +31,6 @@ if LANGSMITH_PRICE_API_KEY:
     )
 
 
-def _turkish_slug(text: str) -> str:
-    tr_map = str.maketrans("İıŞşÇçÜüÖöĞğ", "IiSsCcUuOoGg")
-    return text.translate(tr_map).lower().strip()
-
-
 async def search_marketplace_prices(
     product_name: str,
     location: str = "İzmir",
@@ -55,112 +51,48 @@ async def search_marketplace_prices(
             id=run_id,
         )
 
-    from browser_use import Agent, Browser
-    from browser_use.llm import ChatGoogle
-    from agent.config import GOOGLE_MODEL, GOOGLE_MODEL_FALLBACK
+    try:
+        from search.tavily_search import search_product_prices, _extract_prices_from_text
+        from agent.config import get_google_llm, GOOGLE_MODEL, GOOGLE_MODEL_FALLBACK
 
-    models_to_try = [GOOGLE_MODEL, GOOGLE_MODEL_FALLBACK]
+        raw_results = search_product_prices(
+            product_name=product_name,
+            location=location,
+            time_period=time_period,
+        )
 
-    def _is_rate_limit_error(exc: BaseException) -> bool:
-        msg = str(exc).lower()
-        return "429" in msg or "resource_exhausted" in msg or "quota" in msg or "rate limit" in msg
-
-    days_map = {"24_hours": 1, "7_days": 7, "30_days": 30}
-    days = days_map.get(time_period, 1)
-    location_slug = _turkish_slug(location)
-
-    search_url = (
-        f"https://www.facebook.com/marketplace/{location_slug}/search"
-        f"?query={product_name}&daysSinceListed={days}"
-    )
-
-    task = f"""Go to {search_url}
-Close any login popup or overlay (click "Kapat" or X button).
-Scroll down 8 times slowly to load more listings.
-
-Then use the extract_content action with this query:
-"Find all product listing cards on this Facebook Marketplace page. For each listing extract: 1) the product title, 2) the price in Turkish Lira as a plain number (e.g. '₺7.100' means 7100, '₺15.000' means 15000 — dots are thousand separators in Turkish), 3) the listing URL. IMPORTANT: SKIP any listing priced at 0, 1, 2, 3, 4, 5 TL or marked as 'Ücretsiz' / 'Free' — these are placeholder prices. Only include listings with realistic prices above 50 TL. Return as a JSON array."
-
-After extraction, immediately use the done action with a JSON object like:
-{{"listings":[{{"title":"...","price":7100,"url":"..."}}]}}
-
-IMPORTANT RULES:
-- Do NOT use find_elements. Use extract_content to read the page.
-- Only include up to 40 listings related to "{product_name}".
-- Turkish price format uses dots as thousand separators: ₺7.100 = 7100, ₺15.000 = 15000.
-- Prices must be numbers (not strings), and must be above 50.
-- SKIP listings with price 0, 1, 2, 3, 4, 5 TL — these are "contact for price" placeholders.
-- If no valid results after filtering, return {{"listings":[]}}
-- Complete within 20 steps. Do NOT retry extractions."""
-
-    last_error = None
-    for model_name in models_to_try:
-        browser = Browser(headless=True)
-        try:
-            llm = ChatGoogle(model=model_name, api_key=GOOGLE_API_KEY)
-            agent = Agent(
-                task=task,
-                llm=llm,
-                browser=browser,
-                max_steps=25,
-            )
-            result = await agent.run()
-            final_text = result.final_result()
-            logger.info(
-                "Agent completed (model=%s). Result length: %d",
-                model_name,
-                len(final_text) if final_text else 0,
-            )
-            parsed = _parse_agent_result(final_text, product_name)
+        if not raw_results:
+            empty = _empty_result()
+            empty["error"] = "Web aramasında sonuç bulunamadı"
             if run_id and ls_client:
-                ls_client.update_run(
-                    run_id,
-                    outputs=parsed,
-                    end_time=datetime.utcnow(),
-                )
-            return parsed
-        except Exception as e:
-            last_error = e
-            if _is_rate_limit_error(e):
-                next_idx = models_to_try.index(model_name) + 1
-                if next_idx < len(models_to_try):
-                    logger.warning(
-                        "Model %s kota aşımı, %s deneniyor...",
-                        model_name,
-                        models_to_try[next_idx],
-                    )
-                    continue
-            logger.error("Browser agent error: %s", str(e), exc_info=True)
-            error_result = {
-                "min_price": None,
-                "max_price": None,
-                "avg_price": None,
-                "cluster_avg_price": None,
-                "listings": [],
-                "total_found": 0,
-                "error": str(e),
-            }
-            if run_id and ls_client:
-                ls_client.update_run(
-                    run_id,
-                    outputs=error_result,
-                    error=str(e),
-                    end_time=datetime.utcnow(),
-                )
-            return error_result
-        finally:
-            try:
-                await browser.close()
-            except Exception:
-                pass
+                ls_client.update_run(run_id, outputs=empty, end_time=datetime.utcnow())
+            return empty
 
-    if last_error:
-        raise last_error
+        search_context = _build_context(raw_results, product_name)
+
+        parsed = await _extract_with_gemini(
+            search_context, product_name, location,
+            [GOOGLE_MODEL, GOOGLE_MODEL_FALLBACK],
+        )
+
+        if run_id and ls_client:
+            ls_client.update_run(run_id, outputs=parsed, end_time=datetime.utcnow())
+
+        return parsed
+
+    except Exception as e:
+        logger.error("Price agent error: %s", str(e), exc_info=True)
+        error_result = _empty_result()
+        error_result["error"] = str(e)
+        if run_id and ls_client:
+            ls_client.update_run(
+                run_id, outputs=error_result, error=str(e), end_time=datetime.utcnow(),
+            )
+        return error_result
 
 
-def _parse_agent_result(text: str, product_name: str) -> dict:
-    """Parse agent output into structured price data."""
-    empty = {
+def _empty_result() -> dict:
+    return {
         "min_price": None,
         "max_price": None,
         "avg_price": None,
@@ -169,16 +101,91 @@ def _parse_agent_result(text: str, product_name: str) -> dict:
         "total_found": 0,
     }
 
+
+def _build_context(results: list[dict], product_name: str) -> str:
+    """Tavily sonuçlarını Gemini'ye göndermek için metin bloğuna çevirir."""
+    lines = [f"Ürün: {product_name}\n"]
+    for i, r in enumerate(results[:20], 1):
+        title = r.get("title", "")
+        content = r.get("content", "")[:500]
+        url = r.get("url", "")
+        lines.append(f"[{i}] {title}\nURL: {url}\n{content}\n")
+    return "\n".join(lines)
+
+
+PRICE_EXTRACTION_PROMPT = """Aşağıdaki web arama sonuçları "{product_name}" ürünü için {location} bölgesindeki ikinci el fiyatları içeriyor.
+
+Bu sonuçlardan TÜM geçerli ürün ilanlarını çıkar. Her ilan için:
+- title: İlan başlığı
+- price: Fiyat (sayı olarak, TL cinsinden. Türk format: nokta binlik ayracı. ₺7.100 = 7100)
+- url: İlan URL'si
+
+KURALLAR:
+- Sadece gerçek ikinci el satış ilanlarını dahil et
+- 50 TL altı fiyatları atla (sahte/placeholder)
+- Ücretsiz/bedava ilanları atla
+- Mümkün olduğunca fazla geçerli ilan çıkar
+
+Çıktı SADECE JSON olsun:
+{{"listings": [{{"title": "...", "price": 7100, "url": "..."}}]}}
+
+İlan bulunamadıysa: {{"listings": []}}
+
+--- ARAMA SONUÇLARI ---
+{context}
+"""
+
+
+async def _extract_with_gemini(
+    context: str,
+    product_name: str,
+    location: str,
+    models: list[str],
+) -> dict:
+    """Gemini ile arama sonuçlarından fiyat verisi çıkarır."""
+    from agent.config import get_google_llm
+    from langchain_core.messages import HumanMessage
+
+    prompt = PRICE_EXTRACTION_PROMPT.format(
+        product_name=product_name,
+        location=location,
+        context=context,
+    )
+
+    last_error = None
+    for model_name in models:
+        try:
+            llm = get_google_llm(model=model_name)
+            response = await llm.ainvoke([HumanMessage(content=prompt)])
+            content = response.content if hasattr(response, "content") else str(response)
+            return _parse_gemini_result(content, product_name)
+        except Exception as e:
+            last_error = e
+            msg = str(e).lower()
+            if "429" in msg or "resource_exhausted" in msg or "quota" in msg:
+                logger.warning("Model %s kota aşımı, fallback deneniyor...", model_name)
+                continue
+            logger.error("Gemini extraction error: %s", e, exc_info=True)
+            raise
+
+    if last_error:
+        raise last_error
+    return _empty_result()
+
+
+def _parse_gemini_result(text: str, product_name: str) -> dict:
+    """Gemini çıktısını yapılandırılmış fiyat verisine çevirir."""
+    empty = _empty_result()
+
     if not text:
-        return {**empty, "error": "Agent returned empty result"}
+        return {**empty, "error": "Gemini boş sonuç döndü"}
 
-    data = None
     cleaned = text.strip()
-
     if cleaned.startswith("```"):
         cleaned = re.sub(r"^```\w*\n?", "", cleaned)
         cleaned = re.sub(r"\n?```$", "", cleaned)
 
+    data = None
     try:
         data = json.loads(cleaned)
     except json.JSONDecodeError:
@@ -190,7 +197,7 @@ def _parse_agent_result(text: str, product_name: str) -> dict:
                 pass
 
     if not data or not isinstance(data, dict):
-        return {**empty, "error": f"Could not parse result: {text[:300]}"}
+        return {**empty, "error": f"Sonuç ayrıştırılamadı: {text[:300]}"}
 
     listings = data.get("listings", [])
 
@@ -210,16 +217,12 @@ def _parse_agent_result(text: str, product_name: str) -> dict:
                 continue
         if price and isinstance(price, (int, float)) and price >= 50:
             url = str(item.get("url", ""))
-            if url and not url.startswith("http"):
-                url = "https://www.facebook.com" + url
             valid_prices.append(float(price))
-            valid_listings.append(
-                {
-                    "title": str(item.get("title", "")),
-                    "price": float(price),
-                    "url": url,
-                }
-            )
+            valid_listings.append({
+                "title": str(item.get("title", "")),
+                "price": float(price),
+                "url": url,
+            })
 
     if valid_prices:
         return {
@@ -231,7 +234,7 @@ def _parse_agent_result(text: str, product_name: str) -> dict:
             "total_found": len(valid_listings),
         }
 
-    return {**empty, "error": "No valid listings found after filtering"}
+    return {**empty, "error": "Filtreleme sonrası geçerli ilan bulunamadı"}
 
 
 def _cluster_average(prices: list[float]) -> float | None:

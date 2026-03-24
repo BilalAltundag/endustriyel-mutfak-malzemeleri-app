@@ -1,8 +1,8 @@
 """
 Price Scraper API
 ─────────────────────────────────────────
-Facebook Marketplace fiyat araştırma endpoint'leri.
-browser-use agent'ı çalıştırır ve sonuçları MongoDB'ye kaydeder.
+Web fiyat araştırma endpoint'leri.
+Tavily + Gemini ile fiyat araştırması yapar ve sonuçları MongoDB'ye kaydeder.
 """
 import logging
 from datetime import datetime
@@ -29,7 +29,7 @@ class PriceSearchRequest(BaseModel):
 
 @router.post("/search")
 async def search_prices(req: PriceSearchRequest):
-    """AI agent ile Facebook Marketplace'te fiyat araştırması yapar."""
+    """AI agent ile web'de fiyat araştırması yapar."""
     from price_agent import search_marketplace_prices
 
     logger.info(

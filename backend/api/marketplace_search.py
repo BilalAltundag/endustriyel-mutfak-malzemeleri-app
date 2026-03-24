@@ -1,8 +1,8 @@
 """
 Marketplace Search API
 ─────────────────────────────────────────
-Facebook Marketplace serbest metin arama endpoint'leri.
-Playwright + Gemini agent ile arama yapar, sonuçları MongoDB'ye kaydeder.
+Web'de serbest metin ürün arama endpoint'leri.
+Tavily API ile arama yapar, sonuçları MongoDB'ye kaydeder.
 """
 import logging
 from datetime import datetime
@@ -26,7 +26,7 @@ class MarketplaceSearchRequest(BaseModel):
 
 @router.post("/search")
 async def search_marketplace(req: MarketplaceSearchRequest):
-    """AI agent ile Facebook Marketplace'te serbest metin araması yapar."""
+    """AI agent ile web'de serbest metin ürün araması yapar."""
     from marketplace_agent import search_marketplace_listings
 
     logger.info(

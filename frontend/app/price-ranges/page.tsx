@@ -327,7 +327,7 @@ function ProductTypeRow({
               <div className="h-4 w-16 bg-gray-200 rounded" />
             </div>
             <div className="mt-2 text-xs text-gray-400 text-center">
-              Facebook Marketplace taranıyor... Bu işlem 1-2 dakika sürebilir.
+              Web&apos;de fiyat araştırılıyor... Bu işlem birkaç saniye sürebilir.
             </div>
           </div>
         )}
@@ -415,7 +415,7 @@ export default function PriceRangesPage() {
             Fiyat Aralıkları
           </h1>
           <p className="text-sm text-gray-500">
-            AI destekli Facebook Marketplace fiyat araştırması
+            AI destekli web fiyat araştırması
           </p>
         </div>
 

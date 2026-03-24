@@ -1,9 +1,9 @@
 """
-Facebook Marketplace Search Agent
+Marketplace Search Agent (Tavily)
 ──────────────────────────────────────────
-Playwright ile Facebook Marketplace'te serbest metin araması yapar.
-Render uyumlu, browser-use yerine dogrudan Playwright kullanir.
-Urun basligi, fiyat, link bilgilerini dondurur. Gercek fiyatli ilanlari filtreler.
+Tavily API ile web'de ürün ilanı araması yapar.
+Birden fazla kaynaktan sonuç toplar (sahibinden, letgo, facebook, vs.).
+LangSmith ile izlenir.
 """
 import os
 import logging
@@ -31,7 +31,7 @@ if LANGSMITH_MARKETPLACE_API_KEY:
 
 @contextmanager
 def _langsmith_env():
-    """Agent calisirken LangSmith env'ini marketplace projesine cevirir."""
+    """Agent çalışırken LangSmith env'ini marketplace projesine çevirir."""
     old = {
         "LANGSMITH_TRACING": os.environ.get("LANGSMITH_TRACING"),
         "LANGSMITH_ENDPOINT": os.environ.get("LANGSMITH_ENDPOINT"),
@@ -59,8 +59,7 @@ def _normalize_turkish(text: str) -> str:
 
 def _title_matches_query(title: str, query: str) -> bool:
     norm_title = _normalize_turkish(title)
-    query_words = query.strip().split()
-    for word in query_words:
+    for word in query.strip().split():
         norm_word = _normalize_turkish(word)
         if len(norm_word) < 2:
             continue
@@ -74,7 +73,7 @@ async def search_marketplace_listings(
     location: str = "İzmir",
     time_period: str = "24_hours",
 ) -> dict:
-    """Facebook Marketplace'te verilen sorguyu arar. Playwright ile (Render uyumlu)."""
+    """Tavily ile web'de ürün ilanı araması yapar."""
     run_id = uuid.uuid4()
     if ls_client:
         ls_client.create_run(
@@ -90,25 +89,24 @@ async def search_marketplace_listings(
             id=run_id,
         )
 
-    days_map = {"24_hours": 1, "7_days": 7, "30_days": 30}
-    days = days_map.get(time_period, 1)
-
     try:
-        def _run_search():
-            from browser.playwright_marketplace_search import fetch_marketplace_listings_playwright
-            return fetch_marketplace_listings_playwright(
-                query=query,
-                location=location,
-                days=days,
-            )
+        from search.tavily_search import search_product_listings
 
         if LANGSMITH_MARKETPLACE_API_KEY:
             with _langsmith_env():
-                raw_listings = await _run_search()
+                raw_listings = search_product_listings(
+                    query=query,
+                    location=location,
+                    time_period=time_period,
+                )
         else:
-            raw_listings = await _run_search()
+            raw_listings = search_product_listings(
+                query=query,
+                location=location,
+                time_period=time_period,
+            )
 
-        parsed = _format_playwright_result(raw_listings, query)
+        parsed = _format_search_result(raw_listings, query)
 
         if run_id and ls_client:
             ls_client.update_run(
@@ -120,7 +118,7 @@ async def search_marketplace_listings(
         return parsed
 
     except Exception as e:
-        logger.error("Marketplace Playwright error: %s", str(e), exc_info=True)
+        logger.error("Marketplace Tavily error: %s", str(e), exc_info=True)
         error_result = {
             "listings": [],
             "total_found": 0,
@@ -136,12 +134,15 @@ async def search_marketplace_listings(
         return error_result
 
 
-def _format_playwright_result(listings: list, query: str) -> dict:
-    """Playwright sonuclarini API formatina cevirir, baslik eslesmesine gore filtreler."""
+def _format_search_result(listings: list, query: str) -> dict:
+    """Tavily sonuçlarını API formatına çevirir, başlık eşleşmesine göre filtreler."""
     empty = {"listings": [], "total_found": 0}
 
     if not listings:
-        return {**empty, "error": "Bu arama icin Facebook Marketplace'te ilan bulunamadi. Zaman dilimini 'Son 30 Gun' yaparak tekrar deneyin."}
+        return {
+            **empty,
+            "error": "Bu arama için web'de ilan bulunamadı. Zaman dilimini veya arama terimini değiştirerek tekrar deneyin.",
+        }
 
     all_listings = [
         {
@@ -157,8 +158,10 @@ def _format_playwright_result(listings: list, query: str) -> dict:
     matched = [l for l in all_listings if _title_matches_query(l["title"], query)]
 
     logger.info(
-        "Marketplace Playwright: %d extracted -> %d title matched (query='%s')",
-        len(all_listings), len(matched), query,
+        "Marketplace Tavily: %d results -> %d title matched (query='%s')",
+        len(all_listings),
+        len(matched),
+        query,
     )
 
     if matched:
@@ -172,5 +175,5 @@ def _format_playwright_result(listings: list, query: str) -> dict:
         "listings": all_listings,
         "total_found": len(all_listings),
         "total_extracted": len(all_listings),
-        "note": f"'{query}' baslikta bulunamadi, tum sonuclar gosteriliyor.",
+        "note": f"'{query}' başlıkta bulunamadı, tüm sonuçlar gösteriliyor.",
     }

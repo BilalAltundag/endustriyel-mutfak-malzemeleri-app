@@ -23,8 +23,8 @@ A full-stack business management platform built for **second-hand industrial kit
 ### AI-Powered Features
 - **AI Product Analysis** — Describe a product via text or voice, and AI auto-fills the product form (powered by Google Gemini)
 - **Voice-to-Text** — Record voice descriptions that get transcribed and analyzed (Groq Whisper)
-- **AI Price Research** — Automated market price scanning using browser automation agents
-- **Marketplace Search** — Search and compare prices across online marketplaces
+- **AI Price Research** — Automated market price scanning using Tavily web search + Gemini AI
+- **Marketplace Search** — Search and compare prices across online marketplaces via Tavily API
 
 ### Technical Highlights
 - **Mobile-first responsive design** — Works seamlessly on phone, tablet, and desktop
@@ -44,7 +44,7 @@ A full-stack business management platform built for **second-hand industrial kit
 | **Database** | MongoDB Atlas (PyMongo) |
 | **AI / LLM** | Google Gemini 2.5 Flash, Groq Whisper, LangChain |
 | **Image Storage** | Cloudinary |
-| **Browser Automation** | Playwright, browser-use |
+| **Web Search** | Tavily API |
 | **Monitoring** | LangSmith (optional) |
 
 ---
@@ -58,6 +58,7 @@ A full-stack business management platform built for **second-hand industrial kit
 │   │   ├── config.py       # API key & model configuration
 │   │   ├── retry.py        # Rate limit retry & fallback
 │   │   └── tools/          # Field mapping, validation, multimodal
+│   ├── search/             # Tavily web search module
 │   ├── api/                # FastAPI route handlers
 │   │   ├── products.py     # Product CRUD + image upload
 │   │   ├── categories.py   # Category management + seeding
@@ -123,6 +124,7 @@ cp backend/.env.example backend/.env
 | Cloudinary | Image storage | [cloudinary.com](https://cloudinary.com/users/register_free) |
 | Google AI Studio | Product analysis | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
 | Groq | Voice transcription | [console.groq.com/keys](https://console.groq.com/keys) |
+| Tavily | Web search (price & marketplace) | [tavily.com](https://tavily.com) |
 | LangSmith | AI monitoring (optional) | [smith.langchain.com](https://smith.langchain.com) |
 
 ### 3. Backend setup
@@ -171,7 +173,7 @@ Backend Root Directory `backend` ise, Build Command olarak şunu kullanın:
 bash build.sh
 ```
 
-Bu komut playwright chromium'u build sırasında kurar (browser-use kaldırıldı, doğrudan Playwright kullanılıyor).
+Bu komut gerekli Python paketlerini yükler.
 
 ---
 
@@ -227,12 +229,12 @@ ngrok http 3000
 │   Desktop)   │◀────│  + API Proxy │◀────│              │
 └─────────────┘     └──────────────┘     └──────┬───────┘
                                                 │
-                         ┌──────────────────────┼──────────────┐
-                         │                      │              │
-                    ┌────▼─────┐      ┌────────▼───┐   ┌─────▼──────┐
-                    │ MongoDB  │      │  Gemini AI │   │ Cloudinary │
-                    │  Atlas   │      │  + Groq    │   │  (Images)  │
-                    └──────────┘      └────────────┘   └────────────┘
+                    ┌───────────────┬────────────┼──────────────┐
+                    │               │            │              │
+               ┌────▼─────┐  ┌─────▼────┐ ┌────▼──────┐ ┌─────▼──────┐
+               │ MongoDB  │  │  Tavily  │ │ Gemini AI │ │ Cloudinary │
+               │  Atlas   │  │  Search  │ │  + Groq   │ │  (Images)  │
+               └──────────┘  └──────────┘ └───────────┘ └────────────┘
 ```
 
 ---

@@ -1,3 +1,5 @@
 """
-Browser modülü - Playwright ile Marketplace sayfa yükleme.
+Browser modülü — DEPRECATED
+Playwright tabanlı scraping kaldırıldı, yerine Tavily API kullanılıyor.
+Bkz: search/tavily_search.py
 """

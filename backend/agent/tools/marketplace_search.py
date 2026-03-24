@@ -1,8 +1,8 @@
 """
-Tool — Facebook Marketplace Search (Playwright)
+Tool — Marketplace Search (Tavily)
 ────────────────────────────────────────────────
-Facebook Marketplace'te urun aramasi yapar. Playwright ile Render uyumlu.
-Gercek fiyatli ilanlari filtreler (1 TL, 25 TL vs. sahte fiyatlar elenir).
+Tavily API ile web'de ürün araması yapar.
+Birden fazla kaynaktan sonuç toplar, gerçek fiyatlı ilanları filtreler.
 """
 import asyncio
 import json
@@ -24,12 +24,12 @@ def search_facebook_marketplace(
     location: str = "Izmir",
     time_period: str = "24_hours",
 ) -> str:
-    """Facebook Marketplace'te urun aramasi yapar.
-    Sonuclar gercek fiyatli ilanlari icerir (1 TL, 25 TL gibi sahte fiyatlar filtrelenir).
+    """Web'de ürün araması yapar (sahibinden, letgo, marketplace vb.).
+    Sonuçlar gerçek fiyatlı ilanları içerir (1 TL, 25 TL gibi sahte fiyatlar filtrelenir).
 
     Args:
-        query: Aranacak urun (orn: "buzdolabi ikinciel", "mikser")
-        location: Sehir (orn: "Izmir", "Istanbul")
+        query: Aranacak ürün (ör: "buzdolabı ikinci el", "mikser")
+        location: Şehir (ör: "Izmir", "Istanbul")
         time_period: "24_hours", "7_days" veya "30_days"
     """
     _ensure_backend_path()

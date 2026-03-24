@@ -250,7 +250,7 @@ export default function MarketplaceSearchPage() {
             Marketplace Arama
           </h1>
           <p className="text-sm text-gray-500">
-            Facebook Marketplace&apos;te AI destekli ürün araması
+            AI destekli web&apos;de ürün araması
           </p>
         </div>
 
@@ -394,11 +394,11 @@ export default function MarketplaceSearchPage() {
                 </div>
                 <div className="text-center">
                   <p className="text-sm font-medium text-gray-700">
-                    Facebook Marketplace taranıyor...
+                    Web&apos;de aranıyor...
                   </p>
                   <p className="text-xs text-gray-400 mt-1">
                     &quot;{query}&quot; için {location} konumunda arama yapılıyor.
-                    Bu işlem 1-2 dakika sürebilir.
+                    Bu işlem birkaç saniye sürebilir.
                   </p>
                 </div>
               </div>
@@ -489,7 +489,7 @@ export default function MarketplaceSearchPage() {
               </h3>
               <p className="text-sm text-gray-400 max-w-sm mx-auto">
                 Yukarıdaki arama kutusuna aramak istediğinizi yazın.
-                AI agent Facebook Marketplace&apos;te sizin için arayacak ve
+                AI agent web&apos;de sizin için arayacak ve
                 ilgili tüm ilanları listeleyecek.
               </p>
             </CardContent>
