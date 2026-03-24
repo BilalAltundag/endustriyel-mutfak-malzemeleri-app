@@ -180,19 +180,19 @@ def search_facebook_marketplace(
     query: str,
     location: str = "İzmir",
     max_results: int = 20,
+    strict_location: bool = True,
 ) -> list[dict]:
     """
     Facebook Marketplace'te bireysel ilan araması.
     Filtreler:
       - Sadece /marketplace/item/ URL'leri (bireysel ilanlar)
       - Fiyat: 50-150K TL arası (0 = bilinmiyor, kabul edilir)
-      - Başlık sorguyla eşleşmeli
-      - Konum: hedef şehirden olanlar öne alınır
+      - Konum: strict_location=True ise sadece hedef şehir
       - Dedup: aynı item ID tekrarlanmaz
     """
     search_queries = [
         f"{query} {location} site:facebook.com/marketplace",
-        f"{query} site:facebook.com/marketplace",
+        f"{query} site:facebook.com/marketplace/{_normalize_turkish(location)}",
     ]
 
     all_results = []
@@ -226,13 +226,18 @@ def search_facebook_marketplace(
         full_text = f"{title} {content}"
 
         is_individual = "/marketplace/item/" in url
-        price = _parse_price(full_text)
-        detected_location = _extract_location_from_title(title) or ""
+        if not is_individual:
+            continue
 
+        price = _parse_price(full_text)
         if not _is_price_valid(price):
             continue
 
+        detected_location = _extract_location_from_title(title) or ""
         in_target_city = _location_matches(full_text, location)
+
+        if strict_location and not in_target_city:
+            continue
 
         listings.append({
             "title": title,
@@ -240,27 +245,20 @@ def search_facebook_marketplace(
             "url": url,
             "location": detected_location or location,
             "description": content[:300] if content else "",
-            "is_individual": is_individual,
+            "is_individual": True,
             "in_target_city": in_target_city,
+            "source": "facebook",
         })
 
-    individual = [l for l in listings if l["is_individual"]]
-    pages = [l for l in listings if not l["is_individual"]]
-
-    local_items = [l for l in individual if l.get("in_target_city")]
-    other_items = [l for l in individual if not l.get("in_target_city")]
-    sorted_listings = local_items + other_items + pages
-
     logger.info(
-        "FB Marketplace: %d raw -> %d filtered (%d items: %d local, %d other, %d pages)",
-        len(all_results), len(listings), len(individual),
-        len(local_items), len(other_items), len(pages),
+        "FB Marketplace: %d raw -> %d after filters (location=%s, strict=%s)",
+        len(all_results), len(listings), location, strict_location,
     )
 
-    return sorted_listings
+    return listings
 
 
-# ─── Genel ürün arama (çoklu kaynak) ─────────────────────────────
+# ─── Marketplace ilan arama ──────────────────────────────────────
 
 
 def search_product_listings(
@@ -269,54 +267,21 @@ def search_product_listings(
     time_period: str = "24_hours",
 ) -> list[dict]:
     """
-    Önce Facebook Marketplace'te arar, sonra diğer kaynaklardan tamamlar.
-    Sonuç formatı: [{"title", "price", "url", "location", "description"}]
+    Sadece Facebook Marketplace'te arar.
+    Sıkı konum filtresi: sadece hedef şehirden ilanlar.
+    Eğer yerel sonuç yoksa konum filtresi gevşetilir.
     """
-    fb_listings = search_facebook_marketplace(query=query, location=location, max_results=15)
+    listings = search_facebook_marketplace(
+        query=query, location=location, max_results=20, strict_location=True,
+    )
 
-    time_label_map = {
-        "24_hours": "son 24 saat",
-        "7_days": "son 7 gün",
-        "30_days": "son 30 gün",
-    }
-    time_label = time_label_map.get(time_period, "")
-    other_query = f"{query} ikinci el satılık {location} {time_label} fiyat TL"
-
-    logger.info("Tavily multi-source search: '%s'", other_query)
-
-    try:
-        other_results = search_web(
-            query=other_query,
-            max_results=10,
-            search_depth="advanced",
-            exclude_domains=["facebook.com"],
+    if not listings:
+        logger.info("No local results for '%s' in %s, relaxing location filter", query, location)
+        listings = search_facebook_marketplace(
+            query=query, location=location, max_results=20, strict_location=False,
         )
-    except Exception:
-        other_results = []
 
-    seen_urls = {l["url"].split("?")[0] for l in fb_listings}
-    other_listings = []
-    for r in other_results:
-        url = r.get("url", "")
-        if url.split("?")[0] in seen_urls:
-            continue
-        title = r.get("title", "")
-        content = r.get("content", "")
-        price = _parse_price(f"{title} {content}")
-        other_listings.append({
-            "title": title,
-            "price": price,
-            "url": url,
-            "location": location,
-            "description": content[:300] if content else "",
-            "is_individual": False,
-            "source": "web",
-        })
-
-    for l in fb_listings:
-        l["source"] = "facebook"
-
-    return fb_listings + other_listings
+    return listings
 
 
 # ─── Fiyat araştırma ─────────────────────────────────────────────
@@ -328,32 +293,21 @@ def search_product_prices(
     time_period: str = "24_hours",
 ) -> list[dict]:
     """
-    Fiyat araştırması: FB Marketplace + web kaynakları.
+    Fiyat araştırması: Sadece Facebook Marketplace.
+    Önce sıkı konum, yoksa gevşek.
     """
-    fb_results = search_facebook_marketplace(
-        query=product_name, location=location, max_results=15,
+    results = search_facebook_marketplace(
+        query=product_name, location=location, max_results=20, strict_location=True,
     )
 
-    time_label_map = {
-        "24_hours": "son 24 saat",
-        "7_days": "son 7 gün",
-        "30_days": "son 30 gün",
-    }
-    time_label = time_label_map.get(time_period, "")
-
-    web_query = f"{product_name} ikinci el fiyat {location} {time_label} TL satılık"
-    try:
-        web_results = search_web(
-            query=web_query, max_results=10, search_depth="advanced",
-            exclude_domains=["facebook.com"],
+    if not results:
+        results = search_facebook_marketplace(
+            query=product_name, location=location, max_results=20, strict_location=False,
         )
-    except Exception:
-        web_results = []
 
     all_results = []
     seen_urls = set()
-
-    for item in fb_results:
+    for item in results:
         url = item.get("url", "")
         if url not in seen_urls:
             seen_urls.add(url)
@@ -363,11 +317,5 @@ def search_product_prices(
                 "content": item.get("description", ""),
                 "source": "facebook",
             })
-
-    for item in web_results:
-        url = item.get("url", "")
-        if url not in seen_urls:
-            seen_urls.add(url)
-            all_results.append({**item, "source": "web"})
 
     return all_results
