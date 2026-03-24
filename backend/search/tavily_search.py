@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
 MIN_REAL_PRICE_TL = 50
+MAX_REAL_PRICE_TL = 150_000
 
 
 def _get_client() -> TavilyClient:
@@ -99,14 +100,26 @@ def _extract_prices_from_text(text: str) -> list[float]:
     return prices
 
 
-def _extract_location_from_text(text: str) -> str:
-    """Facebook Marketplace ilan metninden konum bilgisi çıkarır."""
-    location_pattern = r"(?:in|[-–])\s+([A-ZÇĞİÖŞÜa-zçğıöşü]+(?:\s*,\s*[A-ZÇĞİÖŞÜa-zçğıöşü]+)*)"
-    m = re.search(location_pattern, text)
-    if m:
-        loc = m.group(1).strip()
-        if len(loc) > 2 and loc.lower() not in ("facebook", "marketplace", "stock", "item"):
-            return loc
+def _extract_location_from_title(title: str) -> str:
+    """
+    Facebook Marketplace ilan başlığından konum çıkarır.
+    Tipik format: "Ürün adı - Kategori - Şehir, Ülke | Facebook Marketplace"
+    """
+    cleaned = re.sub(r"\s*\|\s*Facebook.*$", "", title, flags=re.IGNORECASE)
+    parts = re.split(r"\s*[-–]\s*", cleaned)
+    if len(parts) >= 3:
+        candidate = parts[-1].strip()
+        candidate = re.sub(r",\s*Turkey$", "", candidate, flags=re.IGNORECASE).strip()
+        skip_words = {"facebook", "marketplace", "stock", "item", "sale", "buy", "sell"}
+        if len(candidate) > 2 and candidate.lower() not in skip_words:
+            return candidate
+    turkey_match = re.search(
+        r"[-–]\s*([A-ZÇĞİÖŞÜa-zçğıöşü]+(?:\s*,\s*[A-ZÇĞİÖŞÜa-zçğıöşü]+)?)\s*,\s*(?:Turkey|Türkiye|T[uü]rkei)",
+        title,
+        re.IGNORECASE,
+    )
+    if turkey_match:
+        return turkey_match.group(1).strip()
     return ""
 
 
@@ -143,6 +156,26 @@ def search_web(
 # ─── Facebook Marketplace özel arama ─────────────────────────────
 
 
+def _location_matches(text: str, target_city: str) -> bool:
+    """Metin içinde hedef şehir var mı kontrol eder (Türkçe karakter toleranslı)."""
+    norm_text = _normalize_turkish(text)
+    norm_city = _normalize_turkish(target_city)
+    return norm_city in norm_text
+
+
+def _is_price_valid(price: float) -> bool:
+    """Fiyat geçerli aralıkta mı? 0 = fiyat yok (kabul edilir), 1-49 = sahte, >150K = uçuk."""
+    if price == 0.0:
+        return True
+    return MIN_REAL_PRICE_TL <= price <= MAX_REAL_PRICE_TL
+
+
+def _extract_item_id(url: str) -> str:
+    """Facebook marketplace item ID'sini URL'den çıkarır (dedup için)."""
+    m = re.search(r"/marketplace/item/(\d+)", url)
+    return m.group(1) if m else ""
+
+
 def search_facebook_marketplace(
     query: str,
     location: str = "İzmir",
@@ -150,26 +183,36 @@ def search_facebook_marketplace(
 ) -> list[dict]:
     """
     Facebook Marketplace'te bireysel ilan araması.
-    site:facebook.com/marketplace filtresi ile sadece FB sonuçları döner.
-    Her sonuç: {"title", "price", "url", "location", "description", "is_individual"}
+    Filtreler:
+      - Sadece /marketplace/item/ URL'leri (bireysel ilanlar)
+      - Fiyat: 50-150K TL arası (0 = bilinmiyor, kabul edilir)
+      - Başlık sorguyla eşleşmeli
+      - Konum: hedef şehirden olanlar öne alınır
+      - Dedup: aynı item ID tekrarlanmaz
     """
     search_queries = [
-        f"{query} site:facebook.com/marketplace",
         f"{query} {location} site:facebook.com/marketplace",
+        f"{query} site:facebook.com/marketplace",
     ]
 
     all_results = []
-    seen_urls = set()
+    seen_item_ids = set()
 
     for sq in search_queries:
         try:
             results = search_web(query=sq, max_results=max_results, search_depth="advanced")
             for r in results:
                 url = r.get("url", "")
-                clean_url = url.split("?")[0]
-                if clean_url in seen_urls:
-                    continue
-                seen_urls.add(clean_url)
+                item_id = _extract_item_id(url)
+                if item_id:
+                    if item_id in seen_item_ids:
+                        continue
+                    seen_item_ids.add(item_id)
+                else:
+                    clean_url = url.split("?")[0]
+                    if clean_url in seen_item_ids:
+                        continue
+                    seen_item_ids.add(clean_url)
                 all_results.append(r)
         except Exception as e:
             logger.warning("FB Marketplace search failed: %s", e)
@@ -184,26 +227,37 @@ def search_facebook_marketplace(
 
         is_individual = "/marketplace/item/" in url
         price = _parse_price(full_text)
-        detected_location = _extract_location_from_text(title) or location
+        detected_location = _extract_location_from_title(title) or ""
+
+        if not _is_price_valid(price):
+            continue
+
+        in_target_city = _location_matches(full_text, location)
 
         listings.append({
             "title": title,
             "price": price,
             "url": url,
-            "location": detected_location,
+            "location": detected_location or location,
             "description": content[:300] if content else "",
             "is_individual": is_individual,
+            "in_target_city": in_target_city,
         })
 
     individual = [l for l in listings if l["is_individual"]]
     pages = [l for l in listings if not l["is_individual"]]
 
+    local_items = [l for l in individual if l.get("in_target_city")]
+    other_items = [l for l in individual if not l.get("in_target_city")]
+    sorted_listings = local_items + other_items + pages
+
     logger.info(
-        "FB Marketplace: %d total, %d individual items, %d category pages",
-        len(listings), len(individual), len(pages),
+        "FB Marketplace: %d raw -> %d filtered (%d items: %d local, %d other, %d pages)",
+        len(all_results), len(listings), len(individual),
+        len(local_items), len(other_items), len(pages),
     )
 
-    return individual + pages
+    return sorted_listings
 
 
 # ─── Genel ürün arama (çoklu kaynak) ─────────────────────────────
