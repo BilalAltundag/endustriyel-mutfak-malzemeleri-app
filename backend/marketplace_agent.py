@@ -135,45 +135,46 @@ async def search_marketplace_listings(
 
 
 def _format_search_result(listings: list, query: str) -> dict:
-    """Tavily sonuçlarını API formatına çevirir, başlık eşleşmesine göre filtreler."""
+    """Sonuçları API formatına çevirir. FB bireysel ilanları öne alır."""
     empty = {"listings": [], "total_found": 0}
 
     if not listings:
         return {
             **empty,
-            "error": "Bu arama için web'de ilan bulunamadı. Zaman dilimini veya arama terimini değiştirerek tekrar deneyin.",
+            "error": "Bu arama için ilan bulunamadı. Arama terimini değiştirerek tekrar deneyin.",
         }
 
-    all_listings = [
-        {
+    all_listings = []
+    for item in listings:
+        all_listings.append({
             "title": str(item.get("title", "")),
             "price": float(item.get("price", 0)),
             "url": str(item.get("url", "")),
             "location": str(item.get("location", "")),
             "description": str(item.get("description", "")),
-        }
-        for item in listings
-    ]
+            "source": str(item.get("source", "web")),
+            "is_individual": bool(item.get("is_individual", False)),
+        })
 
-    matched = [l for l in all_listings if _title_matches_query(l["title"], query)]
+    fb_individual = [l for l in all_listings if l["is_individual"]]
+    fb_pages = [l for l in all_listings if l.get("source") == "facebook" and not l["is_individual"]]
+    web_results = [l for l in all_listings if l.get("source") != "facebook"]
+
+    sorted_listings = fb_individual + web_results + fb_pages
+
+    matched = [l for l in sorted_listings if _title_matches_query(l["title"], query)]
 
     logger.info(
-        "Marketplace Tavily: %d results -> %d title matched (query='%s')",
-        len(all_listings),
-        len(matched),
-        query,
+        "Marketplace: %d total (%d FB items, %d web) -> %d title matched (query='%s')",
+        len(all_listings), len(fb_individual), len(web_results), len(matched), query,
     )
 
-    if matched:
-        return {
-            "listings": matched,
-            "total_found": len(matched),
-            "total_extracted": len(all_listings),
-        }
+    final = matched if matched else sorted_listings
 
     return {
-        "listings": all_listings,
-        "total_found": len(all_listings),
+        "listings": final,
+        "total_found": len(final),
         "total_extracted": len(all_listings),
-        "note": f"'{query}' başlıkta bulunamadı, tüm sonuçlar gösteriliyor.",
+        "fb_individual_count": len(fb_individual),
+        **({"note": f"'{query}' başlıkta bulunamadı, tüm sonuçlar gösteriliyor."} if not matched else {}),
     }

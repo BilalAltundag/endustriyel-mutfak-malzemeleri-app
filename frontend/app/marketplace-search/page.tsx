@@ -25,6 +25,8 @@ interface MarketplaceListing {
   url: string
   location: string
   description: string
+  source?: string
+  is_individual?: boolean
 }
 
 interface SearchResult {
@@ -35,7 +37,7 @@ interface SearchResult {
   listings: MarketplaceListing[]
   total_found: number
   total_extracted?: number
-  total_title_matched?: number
+  fb_individual_count?: number
   note?: string | null
   error?: string | null
   searched_at: string
@@ -67,16 +69,25 @@ function timeAgo(dateStr: string): string {
 }
 
 function ListingCard({ listing }: { listing: MarketplaceListing }) {
+  const isFB = listing.source === 'facebook'
+  const isIndividual = listing.is_individual
+
   return (
     <a
       href={listing.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="block bg-white rounded-xl border border-gray-100 p-4 hover:shadow-md hover:border-blue-200 transition-all group"
+      className={`block rounded-xl border p-4 hover:shadow-md transition-all group ${
+        isIndividual
+          ? 'bg-white border-blue-100 hover:border-blue-300'
+          : 'bg-white border-gray-100 hover:border-blue-200'
+      }`}
     >
       <div className="flex items-start gap-3">
-        <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-blue-100 transition-colors">
-          <ShoppingBag className="w-5 h-5 text-blue-500" />
+        <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors ${
+          isFB ? 'bg-blue-50 group-hover:bg-blue-100' : 'bg-gray-50 group-hover:bg-gray-100'
+        }`}>
+          <ShoppingBag className={`w-5 h-5 ${isFB ? 'text-blue-500' : 'text-gray-500'}`} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
@@ -107,6 +118,15 @@ function ListingCard({ listing }: { listing: MarketplaceListing }) {
               <span className="inline-flex items-center gap-1 text-xs text-gray-400">
                 <MapPin className="w-3 h-3" />
                 {listing.location}
+              </span>
+            )}
+            {isFB && (
+              <span className={`inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                isIndividual
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'bg-blue-50 text-blue-500'
+              }`}>
+                {isIndividual ? 'FB Marketplace' : 'FB'}
               </span>
             )}
           </div>
@@ -438,10 +458,10 @@ export default function MarketplaceSearchPage() {
                 </h2>
                 <div className="flex items-center flex-wrap gap-2 text-xs text-gray-500 mt-0.5">
                   <span>{currentResult.total_found} ilan bulundu</span>
-                  {currentResult.total_extracted && currentResult.total_extracted > currentResult.total_found && (
+                  {currentResult.fb_individual_count != null && currentResult.fb_individual_count > 0 && (
                     <>
                       <span>&middot;</span>
-                      <span className="text-gray-400">({currentResult.total_extracted} tarandı)</span>
+                      <span className="text-blue-600">{currentResult.fb_individual_count} FB Marketplace</span>
                     </>
                   )}
                   <span>&middot;</span>
